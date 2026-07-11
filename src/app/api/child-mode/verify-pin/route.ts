@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { verifyParentPin } from "@/lib/security/pin";
 
 export async function POST(req: Request) {
@@ -108,9 +109,11 @@ export async function POST(req: Request) {
       );
     }
 
-    // 4. Se successo: disattiva modalità bambino ed elimina active_child_profile_id
-    await supabase.auth.updateUser({
-      data: {
+    // 4. Se successo: disattiva modalità bambino ed elimina active_child_profile_id in app_metadata
+    const adminSupabase = createAdminClient();
+    await adminSupabase.auth.admin.updateUserById(user.id, {
+      app_metadata: {
+        ...(user.app_metadata || {}),
         is_child_mode: false,
         active_child_profile_id: null,
       },

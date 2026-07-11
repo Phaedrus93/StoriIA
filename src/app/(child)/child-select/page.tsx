@@ -56,11 +56,15 @@ export default function ChildSelectPage() {
         return;
       }
 
+      if (typeof window !== "undefined") {
+        localStorage.setItem("storiia_active_child_id", child.id);
+      }
+
       // Refresh esplicito della sessione per far acquisire il nuovo claim JWT al client
       await supabase.auth.refreshSession();
 
-      // Vai alla modalità lettura
-      router.push("/read");
+      // Vai alla modalità lettura con il profilo selezionato
+      router.push(`/read?childId=${child.id}`);
     } catch {
       setErrorMsg("Errore di connessione durante la selezione del profilo.");
       setSelectingId(null);

@@ -76,7 +76,20 @@ export default function ChildReaderPage() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    const activeChildId = user?.app_metadata?.active_child_profile_id;
+
+    const queryChildId =
+      typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("childId")
+        : null;
+    const storedChildId =
+      typeof window !== "undefined"
+        ? localStorage.getItem("storiia_active_child_id")
+        : null;
+
+    const activeChildId =
+      queryChildId ||
+      storedChildId ||
+      user?.app_metadata?.active_child_profile_id;
 
     // 1. Carica i profili bambino disponibili
     const { data: childList } = await supabase
@@ -90,6 +103,9 @@ export default function ChildReaderPage() {
         activeChildId && childList.some((c) => c.id === activeChildId)
           ? activeChildId
           : childList[0].id;
+      if (typeof window !== "undefined") {
+        localStorage.setItem("storiia_active_child_id", targetChildId);
+      }
       setSelectedChildId(targetChildId);
     } else {
       // Se non ci sono profili, carica comunque le storie generali
@@ -158,6 +174,10 @@ export default function ChildReaderPage() {
   const handleSelectChild = async (childId: string) => {
     setSelectedChildId(childId);
     setActiveStory(null);
+
+    if (typeof window !== "undefined") {
+      localStorage.setItem("storiia_active_child_id", childId);
+    }
 
     try {
       await fetch("/api/child-mode/select-profile", {

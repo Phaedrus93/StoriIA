@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(req: Request) {
   try {
@@ -51,9 +52,11 @@ export async function POST(req: Request) {
       );
     }
 
-    // Aggiorna metadata utente affinché il JWT contenga is_child_mode=true e active_child_profile_id
-    await supabase.auth.updateUser({
-      data: {
+    // Aggiorna app_metadata utente affinché il JWT contenga is_child_mode=true e active_child_profile_id
+    const adminSupabase = createAdminClient();
+    await adminSupabase.auth.admin.updateUserById(user.id, {
+      app_metadata: {
+        ...(user.app_metadata || {}),
         is_child_mode: true,
         active_child_profile_id: childProfileId,
       },
