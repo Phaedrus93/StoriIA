@@ -1,5 +1,7 @@
 import React from "react";
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
+import HomeHeaderNav from "./HomeHeaderNav";
 import {
   Sparkles,
   BookOpen,
@@ -11,7 +13,12 @@ import {
   Smile,
 } from "lucide-react";
 
-export default function HomePage() {
+export default async function HomePage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   return (
     <div className="min-h-screen bg-slate-950 text-white relative overflow-hidden flex flex-col justify-between">
       {/* Sfondo con bagliori dinamici Glassmorphism */}
@@ -34,21 +41,7 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          <Link
-            href="/login"
-            className="text-xs font-semibold text-slate-300 hover:text-white transition-colors"
-          >
-            Accedi
-          </Link>
-          <Link
-            href="/dashboard"
-            className="btn-primary text-xs flex items-center gap-1.5 shadow-lg shadow-indigo-500/20"
-          >
-            <span>Area Genitori</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </Link>
-        </div>
+        <HomeHeaderNav isAuthenticated={!!user} />
       </header>
 
       {/* Sezione Hero Principale */}

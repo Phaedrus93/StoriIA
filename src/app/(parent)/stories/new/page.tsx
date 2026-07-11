@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import {
   Sparkles,
@@ -85,11 +86,32 @@ export default function NewStoryPage() {
   async function loadLibraryAndChildren() {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
-    const { count } = await supabase
-      .from("stories")
-      .select("*", { count: "exact", head: true })
-      .gte("created_at", todayStart.toISOString());
-    setTodayCount(count || 0);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (user) {
+      const { data: fam } = await supabase
+        .from("families")
+        .select("id")
+        .eq("parent_user_id", user.id)
+        .single();
+
+      if (fam) {
+        const { count } = await supabase
+          .from("stories")
+          .select("*", { count: "exact", head: true })
+          .eq("family_id", fam.id)
+          .neq("source", "preset")
+          .gte("created_at", todayStart.toISOString());
+        setTodayCount(count || 0);
+      } else {
+        setTodayCount(0);
+      }
+    } else {
+      setTodayCount(0);
+    }
 
     const { data: charData } = await supabase
       .from("characters")
@@ -187,6 +209,12 @@ export default function NewStoryPage() {
   return (
     <div className="max-w-4xl mx-auto space-y-8 relative">
       <div>
+        <Link
+          href="/dashboard"
+          className="text-xs font-semibold text-slate-400 hover:text-white transition-colors inline-flex items-center gap-1 mb-3"
+        >
+          ← Torna alla Dashboard Genitore
+        </Link>
         <h1 className="text-3xl font-bold flex items-center gap-3">
           <Sparkles className="w-8 h-8 text-amber-400" />
           <span>Generatore Storie AI su Misura</span>

@@ -12,6 +12,7 @@ import {
   User,
   ChevronLeft,
   ChevronRight,
+  Clock,
 } from "lucide-react";
 import { paginateText } from "@/lib/reader/paginator";
 import { getAvatarUrl } from "@/lib/avatars";
@@ -301,6 +302,46 @@ export default function ChildReaderPage() {
     }
   };
 
+  const renderStoryCard = (item: ReadableStory) => (
+    <div
+      key={item.id}
+      onClick={() => handleOpenStory(item)}
+      className="glass-card p-6 cursor-pointer hover:border-emerald-500/60 transition-all transform hover:-translate-y-1 flex flex-col justify-between"
+    >
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <span className="badge-glow text-[10px]">
+            Età {item.target_age_range}
+          </span>
+          {item.reading_status === "completed" ? (
+            <span className="flex items-center gap-1 text-xs text-emerald-400 font-bold">
+              <CheckCircle2 className="w-4 h-4" /> Letta
+            </span>
+          ) : item.reading_status === "in_progress" ? (
+            <span className="text-xs text-amber-400 font-bold">
+              In Lettura
+            </span>
+          ) : (
+            <span className="text-xs text-pink-400 font-bold">
+              Nuova ★
+            </span>
+          )}
+        </div>
+        <h3 className="font-bold text-lg text-white mb-2 line-clamp-2">
+          {item.title}
+        </h3>
+        <p className="text-xs text-slate-400 line-clamp-4 leading-relaxed">
+          {item.generated_text}
+        </p>
+      </div>
+
+      <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between text-xs font-semibold text-emerald-300">
+        <span>{item.reading_status === "completed" ? "Rileggi Favola" : item.reading_status === "in_progress" ? "Riprendi Lettura" : "Inizia a Leggere"}</span>
+        <BookOpen className="w-4 h-4" />
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-slate-950 text-white p-4 md:p-8 space-y-8">
       {/* Intestazione Bambino Esclusiva */}
@@ -435,46 +476,60 @@ export default function ChildReaderPage() {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {stories.map((item) => (
-            <div
-              key={item.id}
-              onClick={() => handleOpenStory(item)}
-              className="glass-card p-6 cursor-pointer hover:border-emerald-500/60 transition-all transform hover:-translate-y-1 flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <span className="badge-glow text-[10px]">
-                    Età {item.target_age_range}
-                  </span>
-                  {item.reading_status === "completed" ? (
-                    <span className="flex items-center gap-1 text-xs text-emerald-400 font-bold">
-                      <CheckCircle2 className="w-4 h-4" /> Letta
-                    </span>
-                  ) : item.reading_status === "in_progress" ? (
-                    <span className="text-xs text-amber-400 font-bold">
-                      In Lettura
-                    </span>
-                  ) : (
-                    <span className="text-xs text-pink-400 font-bold">
-                      Nuova ★
-                    </span>
-                  )}
-                </div>
-                <h3 className="font-bold text-lg text-white mb-2 line-clamp-2">
-                  {item.title}
-                </h3>
-                <p className="text-xs text-slate-400 line-clamp-4 leading-relaxed">
-                  {item.generated_text}
-                </p>
+        <div className="space-y-12">
+          {/* Sezione 1: Continua a leggere */}
+          {stories.filter((s) => s.reading_status === "in_progress").length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
+                <Clock className="w-5 h-5 text-amber-400" />
+                <h3 className="text-lg font-bold text-white">Continua a leggere</h3>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-semibold">
+                  {stories.filter((s) => s.reading_status === "in_progress").length}
+                </span>
               </div>
-
-              <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between text-xs font-semibold text-emerald-300">
-                <span>Inizia a Leggere</span>
-                <BookOpen className="w-4 h-4" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {stories
+                  .filter((s) => s.reading_status === "in_progress")
+                  .map((item) => renderStoryCard(item))}
               </div>
             </div>
-          ))}
+          )}
+
+          {/* Sezione 2: Novità */}
+          {stories.filter((s) => s.reading_status === "new").length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
+                <Sparkles className="w-5 h-5 text-pink-400" />
+                <h3 className="text-lg font-bold text-white">Novità</h3>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 font-semibold">
+                  {stories.filter((s) => s.reading_status === "new").length}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {stories
+                  .filter((s) => s.reading_status === "new")
+                  .map((item) => renderStoryCard(item))}
+              </div>
+            </div>
+          )}
+
+          {/* Sezione 3: Già lette */}
+          {stories.filter((s) => s.reading_status === "completed").length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                <h3 className="text-lg font-bold text-white">Già lette</h3>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-semibold">
+                  {stories.filter((s) => s.reading_status === "completed").length}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {stories
+                  .filter((s) => s.reading_status === "completed")
+                  .map((item) => renderStoryCard(item))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

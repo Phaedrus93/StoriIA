@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { APP_CONFIG } from "@/lib/config";
 import {
@@ -163,6 +164,12 @@ export default function ChildrenPage() {
   return (
     <div className="space-y-10">
       <div>
+        <Link
+          href="/dashboard"
+          className="text-xs font-semibold text-slate-400 hover:text-white transition-colors inline-flex items-center gap-1 mb-3"
+        >
+          ← Torna alla Dashboard Genitore
+        </Link>
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Users className="w-6 h-6 text-indigo-400" />
           <span>Gestione Profili Figli</span>
@@ -220,19 +227,24 @@ export default function ChildrenPage() {
               <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
                 Scegli Avatar Gratuito
               </label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 gap-2.5">
                 {APP_CONFIG.defaultAvatarPresets.map((avatar) => (
                   <button
                     key={avatar.id}
                     type="button"
                     onClick={() => setSelectedAvatar(avatar.id)}
-                    className={`p-2 rounded-xl border text-center text-xs transition-all ${
+                    className={`p-2.5 rounded-xl border flex flex-col items-center justify-center text-center transition-all ${
                       selectedAvatar === avatar.id
-                        ? "border-indigo-500 bg-indigo-500/20 text-white"
-                        : "border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700"
+                        ? "border-indigo-500 bg-indigo-500/20 text-white shadow-md shadow-indigo-500/20 ring-2 ring-indigo-500/50"
+                        : "border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700 hover:bg-slate-800/50"
                     }`}
                   >
-                    <span className="block font-semibold mt-1 truncate">{avatar.name}</span>
+                    <img
+                      src={getAvatarUrl(avatar.id)}
+                      alt={avatar.name}
+                      className="w-12 h-12 object-contain rounded-xl p-1"
+                    />
+                    <span className="block text-[11px] font-medium mt-1 truncate w-full">{avatar.name}</span>
                   </button>
                 ))}
               </div>

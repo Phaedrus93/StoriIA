@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Sparkles, Plus, Trash2, UserCheck, AlertTriangle, X, Edit2 } from "lucide-react";
 import { evaluatePreDeleteCheck } from "@/lib/library/delete-helper";
@@ -174,6 +175,12 @@ export default function CharactersPage() {
   return (
     <div className="space-y-10">
       <div>
+        <Link
+          href="/dashboard"
+          className="text-xs font-semibold text-slate-400 hover:text-white transition-colors inline-flex items-center gap-1 mb-3"
+        >
+          ← Torna alla Dashboard Genitore
+        </Link>
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Sparkles className="w-6 h-6 text-indigo-400" />
           <span>Character Builder — Personaggi</span>

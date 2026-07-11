@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import {
   BookOpen,
@@ -37,6 +38,8 @@ export default function StoriesArchivePage() {
   const [stories, setStories] = useState<Story[]>([]);
   const [children, setChildren] = useState<ChildProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [storyToDelete, setStoryToDelete] = useState<Story | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const supabase = createClient();
 
@@ -75,11 +78,17 @@ export default function StoriesArchivePage() {
     setLoading(false);
   }
 
-  const handleDeleteStory = async (id: string) => {
-    if (confirm("Vuoi eliminare definitivamente questa storia dall'archivio?")) {
-      await supabase.from("stories").delete().eq("id", id);
-      loadArchive();
-    }
+  const handleDeleteStory = (st: Story) => {
+    setStoryToDelete(st);
+  };
+
+  const confirmDeleteStory = async () => {
+    if (!storyToDelete) return;
+    setDeleting(true);
+    await supabase.from("stories").delete().eq("id", storyToDelete.id);
+    setDeleting(false);
+    setStoryToDelete(null);
+    loadArchive();
   };
 
   const toggleAssignment = async (
@@ -138,6 +147,12 @@ export default function StoriesArchivePage() {
     <div className="space-y-10">
       <div className="flex items-center justify-between">
         <div>
+          <Link
+            href="/dashboard"
+            className="text-xs font-semibold text-slate-400 hover:text-white transition-colors inline-flex items-center gap-1 mb-3"
+          >
+            ← Torna alla Dashboard Genitore
+          </Link>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <BookOpen className="w-6 h-6 text-indigo-400" />
             <span>Archivio Storie della Famiglia</span>
@@ -200,7 +215,7 @@ export default function StoriesArchivePage() {
 
                   {st.source !== "preset" && (
                     <button
-                      onClick={() => handleDeleteStory(st.id)}
+                      onClick={() => handleDeleteStory(st)}
                       className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors self-start md:self-center"
                       title="Elimina storia"
                     >
@@ -213,39 +228,30 @@ export default function StoriesArchivePage() {
                   {st.generated_text}
                 </div>
 
-                {/* Assegnazioni e Stato di Lettura dei Bambini */}
-                <div className="pt-2 flex flex-wrap items-center gap-3">
-                  <span className="text-xs text-slate-400 font-semibold flex items-center gap-1.5">
-                    <Users className="w-3.5 h-3.5 text-indigo-400" />
-                    Assegnata a:
-                  </span>
-
+                {/* Lista Assegnazione Figli */}
+                <div className="pt-2 flex flex-wrap items-center gap-2 border-t border-slate-800/80">
+                  <span className="text-xs text-slate-400 mr-1">Assegna a:</span>
                   {children.length === 0 ? (
-                    <span className="text-xs text-amber-400/80 italic">
-                      Nessun profilo bambino presente. Crea prima un profilo nella sezione &quot;Profili Figli&quot;.
+                    <span className="text-xs text-slate-500 italic">
+                      Nessun profilo figlio configurato
                     </span>
                   ) : (
                     children.map((child) => {
                       const assignment = st.assignments?.find(
                         (a) => a.child_profile_id === child.id
                       );
-
                       return (
                         <button
                           key={child.id}
-                          type="button"
                           onClick={(e) => toggleAssignment(e, st.id, child.id)}
-                          className={`px-3 py-1.5 rounded-xl border text-xs font-medium flex items-center gap-2 transition-all ${
+                          className={`px-3 py-1.5 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all ${
                             assignment
                               ? "bg-indigo-600/20 border-indigo-500 text-indigo-200"
                               : "bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700"
                           }`}
                           title={assignment ? "Clicca per rimuovere assegnazione" : "Clicca per assegnare la storia"}
                         >
-                          <span>
-                            {assignment ? "✓ " : "+ "} {child.name}
-                          </span>
-
+                          <span>{assignment ? "✓ " : "+ "} {child.name}</span>
                           {assignment && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-900/80">
                               {assignment.reading_status === "completed" ? (
@@ -270,6 +276,40 @@ export default function StoriesArchivePage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {storyToDelete && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="max-w-md w-full glass-card p-6 border-rose-500/30 space-y-5 shadow-2xl">
+            <div className="flex items-center gap-3 text-rose-400">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <h3 className="font-bold text-lg text-white">Elimina Storia</h3>
+            </div>
+            <p className="text-sm text-slate-300">
+              Vuoi eliminare definitivamente una storia dall&apos;archivio? L&apos;azione non può essere annullata.
+            </p>
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setStoryToDelete(null)}
+                className="btn-secondary px-4 py-2 text-xs"
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={confirmDeleteStory}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs shadow-lg shadow-rose-500/20 transition-all flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{deleting ? "Eliminazione..." : "Conferma Eliminazione"}</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

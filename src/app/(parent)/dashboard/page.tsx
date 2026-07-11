@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { BookOpen, Users, Sparkles, Plus, ArrowRight, ShieldCheck } from "lucide-react";
+import { getAvatarUrl } from "@/lib/avatars";
 
 interface ChildProfile {
   id: string;
@@ -84,9 +85,11 @@ export default function DashboardPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             {children.map((child) => (
               <div key={child.id} className="glass-card p-5 flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-pink-500 to-indigo-500 flex items-center justify-center font-bold text-lg text-white">
-                  {child.name.charAt(0).toUpperCase()}
-                </div>
+                <img
+                  src={getAvatarUrl(child.avatar_preset_id)}
+                  alt={child.name}
+                  className="w-14 h-14 rounded-2xl bg-slate-900/80 border border-indigo-500/30 p-1 object-contain shrink-0"
+                />
                 <div>
                   <h3 className="font-semibold text-white">{child.name}</h3>
                   {child.birth_year && (

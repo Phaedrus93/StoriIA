@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { hashPinAction } from "@/app/actions/pin";
 import { UserCog, KeyRound, Lock, ShieldCheck, Mail, Sparkles } from "lucide-react";
@@ -176,6 +177,12 @@ export default function ProfilePage() {
   return (
     <div className="space-y-10 max-w-4xl mx-auto">
       <div>
+        <Link
+          href="/dashboard"
+          className="text-xs font-semibold text-slate-400 hover:text-white transition-colors inline-flex items-center gap-1 mb-3"
+        >
+          ← Torna alla Dashboard Genitore
+        </Link>
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <UserCog className="w-6 h-6 text-indigo-400" />
           <span>Profilo e Sicurezza Genitore</span>

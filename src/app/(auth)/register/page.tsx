@@ -63,6 +63,15 @@ export default function RegisterPage() {
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
       <div className="max-w-md w-full glass-card p-8">
+        <div className="mb-4">
+          <Link
+            href="/"
+            className="text-xs font-semibold text-slate-400 hover:text-white transition-colors inline-flex items-center gap-1"
+          >
+            ← Torna alla Home
+          </Link>
+        </div>
+
         <div className="flex flex-col items-center text-center mb-8">
           <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-pink-500 to-amber-500 flex items-center justify-center shadow-lg mb-4">
             <Users className="w-8 h-8 text-white" />
@@ -89,7 +98,7 @@ export default function RegisterPage() {
               Email Genitore
             </label>
             <div className="relative">
-              <Mail className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400" />
+              <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
               <input
                 id="reg-email-input"
                 type="email"
@@ -97,7 +106,7 @@ export default function RegisterPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="genitore@famiglia.it"
-                className="input-field pl-10"
+                className="input-field input-field-icon"
               />
             </div>
           </div>
@@ -107,7 +116,7 @@ export default function RegisterPage() {
               Password (min. 6 caratteri)
             </label>
             <div className="relative">
-              <Lock className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400" />
+              <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
               <input
                 id="reg-password-input"
                 type="password"
@@ -116,7 +125,7 @@ export default function RegisterPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="input-field pl-10"
+                className="input-field input-field-icon"
               />
             </div>
           </div>
