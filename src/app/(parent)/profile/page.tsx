@@ -10,13 +10,16 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
 
   // Cambio Password
+  const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordStatus, setPasswordStatus] = useState<{ type: "success" | "error"; msg: string } | null>(null);
   const [updatingPassword, setUpdatingPassword] = useState(false);
 
   // Cambio PIN
+  const [currentPin, setCurrentPin] = useState("");
   const [newPin, setNewPin] = useState("");
+  const [confirmNewPin, setConfirmNewPin] = useState("");
   const [pinStatus, setPinStatus] = useState<{ type: "success" | "error"; msg: string } | null>(null);
   const [updatingPin, setUpdatingPin] = useState(false);
 
@@ -42,7 +45,7 @@ export default function ProfilePage() {
     if (newPassword.length < 6) {
       setPasswordStatus({
         type: "error",
-        msg: "La password deve avere almeno 6 caratteri.",
+        msg: "La nuova password deve avere almeno 6 caratteri.",
       });
       return;
     }
@@ -56,6 +59,22 @@ export default function ProfilePage() {
     }
 
     setUpdatingPassword(true);
+
+    if (userEmail && currentPassword) {
+      const { error: signInErr } = await supabase.auth.signInWithPassword({
+        email: userEmail,
+        password: currentPassword,
+      });
+      if (signInErr) {
+        setPasswordStatus({
+          type: "error",
+          msg: "La password attuale inserita non è corretta.",
+        });
+        setUpdatingPassword(false);
+        return;
+      }
+    }
+
     const { error } = await supabase.auth.updateUser({
       password: newPassword,
     });
@@ -70,6 +89,7 @@ export default function ProfilePage() {
         type: "success",
         msg: "Password aggiornata con successo!",
       });
+      setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
     }
@@ -83,13 +103,37 @@ export default function ProfilePage() {
     if (!/^\d{4,6}$/.test(newPin)) {
       setPinStatus({
         type: "error",
-        msg: "Il PIN deve essere composto da 4 a 6 cifre numeriche.",
+        msg: "Il nuovo PIN deve essere composto da 4 a 6 cifre numeriche.",
+      });
+      return;
+    }
+
+    if (newPin !== confirmNewPin) {
+      setPinStatus({
+        type: "error",
+        msg: "I due nuovi PIN inseriti non coincidono.",
       });
       return;
     }
 
     setUpdatingPin(true);
     try {
+      if (currentPin) {
+        const resVerify = await fetch("/api/child-mode/verify-pin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pin: currentPin }),
+        });
+        if (!resVerify.ok) {
+          setPinStatus({
+            type: "error",
+            msg: "Il PIN attuale inserito non è corretto.",
+          });
+          setUpdatingPin(false);
+          return;
+        }
+      }
+
       const hashedPin = await hashPinAction(newPin);
       const { data: family } = await supabase.from("families").select("id").single();
       if (!family) {
@@ -116,7 +160,9 @@ export default function ProfilePage() {
           type: "success",
           msg: "PIN genitore aggiornato con successo!",
         });
+        setCurrentPin("");
         setNewPin("");
+        setConfirmNewPin("");
       }
     } catch {
       setPinStatus({
@@ -176,6 +222,19 @@ export default function ProfilePage() {
               <form onSubmit={handleUpdatePassword} className="space-y-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                    Password Attuale (opzionale se primo accesso o social)
+                  </label>
+                  <input
+                    type="password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    placeholder="La tua password attuale"
+                    className="input-field"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
                     Nuova Password
                   </label>
                   <input
@@ -191,7 +250,7 @@ export default function ProfilePage() {
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                    Conferma Password
+                    Conferma Nuova Password
                   </label>
                   <input
                     type="password"
@@ -246,6 +305,20 @@ export default function ProfilePage() {
               <form onSubmit={handleUpdatePin} className="space-y-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                    PIN Attuale (se già impostato)
+                  </label>
+                  <input
+                    type="password"
+                    maxLength={6}
+                    value={currentPin}
+                    onChange={(e) => setCurrentPin(e.target.value)}
+                    placeholder="Il tuo PIN attuale"
+                    className="input-field tracking-widest text-center font-mono text-lg"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
                     Nuovo PIN Genitore (4-6 cifre)
                   </label>
                   <input
@@ -255,6 +328,21 @@ export default function ProfilePage() {
                     value={newPin}
                     onChange={(e) => setNewPin(e.target.value)}
                     placeholder="es. 1234 o 123456"
+                    className="input-field tracking-widest text-center font-mono text-lg"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                    Conferma Nuovo PIN
+                  </label>
+                  <input
+                    type="password"
+                    maxLength={6}
+                    required
+                    value={confirmNewPin}
+                    onChange={(e) => setConfirmNewPin(e.target.value)}
+                    placeholder="Ripeti il nuovo PIN"
                     className="input-field tracking-widest text-center font-mono text-lg"
                   />
                 </div>

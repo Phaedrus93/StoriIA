@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Sparkles, ShieldAlert, ArrowLeft, CheckCircle2 } from "lucide-react";
+import { getAvatarUrl } from "@/lib/avatars";
 
 interface ChildProfile {
   id: string;
@@ -130,9 +131,11 @@ export default function ChildSelectPage() {
                   }`}
                 >
                   <div className="space-y-4">
-                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-500/20 to-pink-500/20 border border-indigo-500/30 flex items-center justify-center text-2xl font-bold text-white group-hover:scale-110 transition-transform">
-                      {child.name.charAt(0).toUpperCase()}
-                    </div>
+                    <img
+                      src={getAvatarUrl(child.avatar_preset_id)}
+                      alt={child.name}
+                      className="w-16 h-16 rounded-2xl bg-slate-900/80 border border-indigo-500/30 p-1.5 object-contain group-hover:scale-110 transition-transform"
+                    />
                     <div>
                       <h2 className="text-xl font-bold text-white group-hover:text-indigo-300 transition-colors">
                         {child.name}

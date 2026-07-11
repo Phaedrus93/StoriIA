@@ -26,6 +26,7 @@ interface StoryAssignment {
 
 interface Story {
   id: string;
+  source?: string;
   target_age_range: string;
   generated_text: string;
   created_at: string;
@@ -81,12 +82,44 @@ export default function StoriesArchivePage() {
     }
   };
 
-  const toggleAssignment = async (storyId: string, childId: string) => {
+  const toggleAssignment = async (
+    e: React.MouseEvent,
+    storyId: string,
+    childId: string
+  ) => {
+    e.preventDefault();
     const st = stories.find((s) => s.id === storyId);
     if (!st) return;
 
     const existing = st.assignments?.find(
       (a) => a.child_profile_id === childId
+    );
+
+    // Aggiornamento Ottimistico UI
+    setStories((prev) =>
+      prev.map((item) => {
+        if (item.id !== storyId) return item;
+        const currentAssigns = item.assignments || [];
+        if (existing) {
+          return {
+            ...item,
+            assignments: currentAssigns.filter((a) => a.id !== existing.id),
+          };
+        } else {
+          return {
+            ...item,
+            assignments: [
+              ...currentAssigns,
+              {
+                id: `temp-${Date.now()}`,
+                child_profile_id: childId,
+                reading_status: "new",
+                last_read_position: 0,
+              },
+            ],
+          };
+        }
+      })
     );
 
     if (existing) {
@@ -99,7 +132,6 @@ export default function StoriesArchivePage() {
         last_read_position: 0,
       });
     }
-    loadArchive();
   };
 
   return (
@@ -166,13 +198,15 @@ export default function StoriesArchivePage() {
                     </h3>
                   </div>
 
-                  <button
-                    onClick={() => handleDeleteStory(st.id)}
-                    className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors self-start md:self-center"
-                    title="Elimina storia"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {st.source !== "preset" && (
+                    <button
+                      onClick={() => handleDeleteStory(st.id)}
+                      className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors self-start md:self-center"
+                      title="Elimina storia"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
 
                 <div className="text-xs text-slate-300 leading-relaxed line-clamp-3 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
@@ -200,7 +234,7 @@ export default function StoriesArchivePage() {
                         <button
                           key={child.id}
                           type="button"
-                          onClick={() => toggleAssignment(st.id, child.id)}
+                          onClick={(e) => toggleAssignment(e, st.id, child.id)}
                           className={`px-3 py-1.5 rounded-xl border text-xs font-medium flex items-center gap-2 transition-all ${
                             assignment
                               ? "bg-indigo-600/20 border-indigo-500 text-indigo-200"

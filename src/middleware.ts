@@ -62,8 +62,10 @@ export async function middleware(request: NextRequest) {
     response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
   }
 
-  // Se la sessione è in modalità bambino, reindirizza le pagine genitore verso /read
-  const isChildMode = user?.app_metadata?.is_child_mode === true;
+  // Se la sessione è in modalità bambino (da JWT claim o cookie httpOnly), reindirizza le pagine genitore verso /read
+  const isChildMode =
+    user?.app_metadata?.is_child_mode === true ||
+    request.cookies.get("storiia_child_mode")?.value === "true";
   const parentOnlyRoutes = [
     "/dashboard",
     "/children",

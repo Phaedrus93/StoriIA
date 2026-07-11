@@ -3,8 +3,20 @@
 import React, { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { APP_CONFIG } from "@/lib/config";
-import { hashPinAction } from "@/app/actions/pin";
-import { Users, Plus, Trash2, ShieldCheck, KeyRound, Sparkles, Edit2 } from "lucide-react";
+import {
+  BookOpen,
+  Sparkles,
+  UserPlus,
+  Trash2,
+  KeyRound,
+  Edit2,
+  X,
+  Check,
+  Users,
+  Plus,
+  ShieldCheck,
+} from "lucide-react";
+import { getAvatarUrl } from "@/lib/avatars";
 
 interface ChildProfile {
   id: string;
@@ -24,10 +36,6 @@ export default function ChildrenPage() {
   const [birthYear, setBirthYear] = useState("");
   const [selectedAvatar, setSelectedAvatar] = useState<string>(APP_CONFIG.defaultAvatarPresets[0].id);
   const [isCreating, setIsCreating] = useState(false);
-
-  // Form Impostazione PIN
-  const [newPin, setNewPin] = useState("");
-  const [pinStatus, setPinStatus] = useState<string | null>(null);
 
   const supabase = createClient();
 
@@ -152,66 +160,6 @@ export default function ChildrenPage() {
     loadChildren();
   };
 
-  const handleUpdatePin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setPinStatus(null);
-    if (!/^\d{4,6}$/.test(newPin)) {
-      setPinStatus("Il PIN deve essere di 4-6 cifre numeriche.");
-      return;
-    }
-
-    try {
-      let activeFamilyId = familyId;
-      if (!activeFamilyId) {
-        const { data: authData } = await supabase.auth.getUser();
-        if (!authData.user) {
-          throw new Error("Devi effettuare l'accesso per impostare il PIN.");
-        }
-        const { data: fam } = await supabase
-          .from("families")
-          .select("id")
-          .eq("parent_user_id", authData.user.id)
-          .single();
-
-        if (fam) {
-          activeFamilyId = fam.id;
-          setFamilyId(fam.id);
-        } else {
-          const { data: newFam, error: insFamErr } = await supabase
-            .from("families")
-            .insert({ parent_user_id: authData.user.id })
-            .select("id")
-            .single();
-
-          if (insFamErr || !newFam) {
-            throw new Error("Famiglia non trovata. Crea prima un profilo figlio.");
-          }
-          activeFamilyId = newFam.id;
-          setFamilyId(newFam.id);
-        }
-      }
-
-      const pinHash = await hashPinAction(newPin);
-      const { error: rpcError } = await supabase.rpc("set_parent_pin_hash", {
-        p_family_id: activeFamilyId,
-        p_pin_hash: pinHash,
-      });
-
-      if (rpcError) {
-        throw new Error(rpcError.message);
-      }
-
-      setNewPin("");
-      setPinStatus("PIN aggiornato con successo! Proteggerà l'uscita dalla modalità bambino.");
-    } catch (err: unknown) {
-      setPinStatus(
-        err instanceof Error
-          ? `Errore PIN: ${err.message}`
-          : "Errore durante l'aggiornamento del PIN."
-      );
-    }
-  };
-
   return (
     <div className="space-y-10">
       <div>
@@ -323,9 +271,11 @@ export default function ChildrenPage() {
               {children.map((child) => (
                 <div key={child.id} className="glass-card p-5 flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-500 to-pink-500 flex items-center justify-center font-bold text-lg text-white">
-                      {child.name.charAt(0).toUpperCase()}
-                    </div>
+                    <img
+                      src={getAvatarUrl(child.avatar_preset_id)}
+                      alt={child.name}
+                      className="w-12 h-12 rounded-2xl bg-slate-900/80 border border-indigo-500/30 p-1 object-contain"
+                    />
                     <div>
                       <h3 className="font-bold text-white">{child.name}</h3>
                       {child.birth_year && (
@@ -354,39 +304,6 @@ export default function ChildrenPage() {
               ))}
             </div>
           )}
-
-          {/* Scheda di Sicurezza PIN Genitore */}
-          <div className="glass-card p-6 mt-8 border-indigo-500/20">
-            <div className="flex items-center gap-2 mb-4">
-              <KeyRound className="w-5 h-5 text-indigo-400" />
-              <h2 className="text-lg font-bold">Imposta o Aggiorna PIN Genitore</h2>
-            </div>
-            <p className="text-sm text-slate-400 mb-4">
-              Questo PIN a 4-6 cifre verrà richiesto per uscire dalla Modalità Bambino e tornare all&apos;Area Genitore.
-            </p>
-
-            {pinStatus && (
-              <div className="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 text-sm mb-4">
-                {pinStatus}
-              </div>
-            )}
-
-            <form onSubmit={handleUpdatePin} className="flex gap-3 max-w-sm">
-              <input
-                type="password"
-                maxLength={6}
-                required
-                value={newPin}
-                onChange={(e) => setNewPin(e.target.value)}
-                placeholder="4-6 cifre"
-                className="input-field"
-              />
-              <button type="submit" className="btn-primary shrink-0">
-                <ShieldCheck className="w-4 h-4" />
-                <span>Salva PIN</span>
-              </button>
-            </form>
-          </div>
         </div>
       </div>
     </div>

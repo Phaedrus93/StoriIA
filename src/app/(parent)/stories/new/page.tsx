@@ -12,6 +12,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import type { AgeRange } from "@/lib/ai/story-generator";
+import { APP_CONFIG } from "@/lib/config";
 
 interface Character {
   id: string;
@@ -72,6 +73,8 @@ export default function NewStoryPage() {
     id: string;
     generated_text: string;
   } | null>(null);
+  const [todayCount, setTodayCount] = useState<number>(0);
+  const maxDaily = APP_CONFIG.generationLimit.maxPerFamilyPer24Hours;
 
   const supabase = createClient();
 
@@ -80,6 +83,14 @@ export default function NewStoryPage() {
   }, []);
 
   async function loadLibraryAndChildren() {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const { count } = await supabase
+      .from("stories")
+      .select("*", { count: "exact", head: true })
+      .gte("created_at", todayStart.toISOString());
+    setTodayCount(count || 0);
+
     const { data: charData } = await supabase
       .from("characters")
       .select("id, name, traits");
@@ -126,12 +137,16 @@ export default function NewStoryPage() {
     const selectedSet = settings.find((s) => s.id === selectedSettingId);
     const moral = DEFAULT_MORALS[selectedMoralIndex];
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 35000);
+
     try {
       const res = await fetch("/api/generate-story", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
+        signal: controller.signal,
         body: JSON.stringify({
           ageRange,
           characterId: selectedCharacterId || null,
@@ -147,21 +162,30 @@ export default function NewStoryPage() {
         }),
       });
 
+      clearTimeout(timeoutId);
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error || "Errore durante la generazione");
       }
 
       setGeneratedStory(data.story);
+      setTodayCount((prev) => prev + 1);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Errore di generazione");
+      clearTimeout(timeoutId);
+      if (err instanceof Error && err.name === "AbortError") {
+        setError(
+          "Tempo di attesa scaduto (35 secondi). La generazione sta richiedendo più tempo del previsto, riprova tra poco."
+        );
+      } else {
+        setError(err instanceof Error ? err.message : "Errore di generazione");
+      }
     } finally {
       setIsGenerating(false);
     }
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-10">
+    <div className="max-w-4xl mx-auto space-y-8 relative">
       <div>
         <h1 className="text-3xl font-bold flex items-center gap-3">
           <Sparkles className="w-8 h-8 text-amber-400" />
@@ -171,6 +195,48 @@ export default function NewStoryPage() {
           Scegli età, protagonista, ambientazione e lezione morale. L&apos;IA scriverà una favola unica per la tua famiglia.
         </p>
       </div>
+
+      {/* Contatore e Progress Bar Generazioni Oggi */}
+      <div className="glass-card p-4 border-indigo-500/30 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div>
+          <h3 className="text-sm font-bold text-white">Limite Generazioni Giornaliere</h3>
+          <p className="text-xs text-slate-400">
+            Storie generate oggi:{" "}
+            <span className="text-indigo-400 font-semibold">{todayCount}</span> /{" "}
+            {maxDaily}
+          </p>
+        </div>
+        <div className="w-full sm:w-48 bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
+          <div
+            className="bg-gradient-to-r from-indigo-500 to-pink-500 h-full transition-all duration-300"
+            style={{
+              width: `${Math.min(100, (todayCount / maxDaily) * 100)}%`,
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Landing Page d'Attesa a Schermo Intero durante la Generazione */}
+      {isGenerating && (
+        <div className="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-xl flex flex-col items-center justify-center p-6 text-center space-y-8 animate-in fade-in duration-300">
+          <div className="relative">
+            <div className="w-24 h-24 rounded-3xl bg-gradient-to-tr from-indigo-500 to-pink-500 flex items-center justify-center animate-pulse shadow-2xl shadow-indigo-500/50">
+              <Sparkles className="w-12 h-12 text-white animate-spin" />
+            </div>
+          </div>
+          <div className="space-y-2 max-w-md">
+            <h2 className="text-2xl md:text-3xl font-extrabold text-white">
+              Creazione della Magia in corso...
+            </h2>
+            <p className="text-sm text-slate-300 leading-relaxed">
+              L&apos;IA sta tessendo la tua favola personalizzata con i personaggi, l&apos;ambientazione e la morale selezionati. Attendi qualche secondo senza ricaricare la pagina.
+            </p>
+          </div>
+          <div className="w-64 bg-slate-800 rounded-full h-1.5 overflow-hidden">
+            <div className="bg-gradient-to-r from-indigo-500 via-pink-500 to-amber-400 h-full w-full animate-pulse" />
+          </div>
+        </div>
+      )}
 
       {generatedStory ? (
         <div className="glass-card p-8 border-indigo-500/40 space-y-6 animate-in fade-in duration-500">
@@ -188,14 +254,14 @@ export default function NewStoryPage() {
               onClick={() => setGeneratedStory(null)}
               className="btn-secondary text-xs"
             >
-              Crea un&apos;altra Storia
+              Crea una Nuova Favola
             </button>
             <a
-              href="/dashboard"
+              href="/stories"
               className="btn-primary text-xs flex items-center gap-2"
             >
-              <span>Torna alla Dashboard</span>
-              <ArrowRight className="w-4 h-4" />
+              <BookOpen className="w-4 h-4" />
+              <span>Vai all&apos;Archivio Storie</span>
             </a>
           </div>
         </div>

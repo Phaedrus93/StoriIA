@@ -320,10 +320,22 @@ CREATE POLICY "Lettura storie della famiglia"
   ON public.stories FOR SELECT
   USING (family_id = public.get_my_family_id() OR source = 'preset');
 
-CREATE POLICY "Scrittura/Eliminazione storie solo se NOT in modalità bambino"
-  ON public.stories FOR ALL
+CREATE POLICY "Inserimento storie solo se NOT in modalita bambino"
+  ON public.stories FOR INSERT
+  WITH CHECK (family_id = public.get_my_family_id() AND NOT public.is_child_mode());
+
+CREATE POLICY "Modifica storie solo se NOT in modalita bambino"
+  ON public.stories FOR UPDATE
   USING (family_id = public.get_my_family_id() AND NOT public.is_child_mode())
   WITH CHECK (family_id = public.get_my_family_id() AND NOT public.is_child_mode());
+
+CREATE POLICY "Eliminazione storie solo se NOT in modalita bambino e non preset"
+  ON public.stories FOR DELETE
+  USING (
+    family_id = public.get_my_family_id()
+    AND NOT public.is_child_mode()
+    AND (source IS NULL OR source != 'preset')
+  );
 
 -- STORY_ASSIGNMENTS
 CREATE POLICY "Lettura assegnazioni storie della famiglia"

@@ -14,6 +14,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { paginateText } from "@/lib/reader/paginator";
+import { getAvatarUrl } from "@/lib/avatars";
 
 interface ChildProfile {
   id: string;
@@ -43,7 +44,12 @@ export default function ChildReaderPage() {
   const [loading, setLoading] = useState(true);
 
   const storyPages = useMemo(() => {
-    return activeStory ? paginateText(activeStory.generated_text, 450) : [];
+    if (!activeStory) return [];
+    // Rimuoviamo l'eventuale riga del titolo # Titolo prima di paginare
+    const cleanBody = activeStory.generated_text
+      .replace(/^#+\s*[^\r\n]+(\r?\n)*/, "")
+      .trim();
+    return paginateText(cleanBody || activeStory.generated_text, 450);
   }, [activeStory]);
 
   // Modale PIN Uscita
@@ -142,7 +148,9 @@ export default function ChildReaderPage() {
         };
       });
 
-      setStories(formatted);
+      // Mostra ESCLUSIVAMENTE le storie assegnate a questo profilo bambino
+      const assignedOnly = formatted.filter((s) => assignmentMap.has(s.id));
+      setStories(assignedOnly);
     }
     setLoading(false);
   }
@@ -165,9 +173,17 @@ export default function ChildReaderPage() {
 
   const handleOpenStory = async (item: ReadableStory) => {
     setActiveStory(item);
-    setCurrentPageIdx(0);
+    const cleanBody = item.generated_text
+      .replace(/^#+\s*[^\r\n]+(\r?\n)*/, "")
+      .trim();
+    const pages = paginateText(cleanBody || item.generated_text, 450);
+    let startIdx = 0;
+    if (item.last_read_position > 0 && pages.length > 0) {
+      startIdx = Math.min(pages.length - 1, item.last_read_position);
+    }
+    setCurrentPageIdx(startIdx);
     if (item.assignmentId && item.reading_status === "new") {
-      updateProgress(item.assignmentId, 0, "in_progress");
+      updateProgress(item.assignmentId, startIdx, "in_progress");
     }
   };
 
@@ -175,14 +191,34 @@ export default function ChildReaderPage() {
     if (newIdx < 0 || newIdx >= storyPages.length) return;
     setCurrentPageIdx(newIdx);
 
-    if (activeStory?.assignmentId && storyPages.length > 0) {
-      const percentage = Math.round(((newIdx + 1) / storyPages.length) * 100);
-      const isLastPage = newIdx === storyPages.length - 1;
-      updateProgress(
-        activeStory.assignmentId,
-        percentage,
-        isLastPage ? "completed" : "in_progress"
+    const isLastPage = newIdx === storyPages.length - 1;
+    const newStatus = isLastPage ? "completed" : "in_progress";
+
+    if (activeStory) {
+      setActiveStory((prev) =>
+        prev
+          ? {
+              ...prev,
+              last_read_position: newIdx,
+              reading_status: newStatus,
+            }
+          : null
       );
+      setStories((prev) =>
+        prev.map((s) =>
+          s.id === activeStory.id
+            ? {
+                ...s,
+                last_read_position: newIdx,
+                reading_status: newStatus,
+              }
+            : s
+        )
+      );
+
+      if (activeStory.assignmentId) {
+        updateProgress(activeStory.assignmentId, newIdx, newStatus);
+      }
     }
   };
 
@@ -247,42 +283,23 @@ export default function ChildReaderPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white p-4 md:p-8 space-y-8">
-      {/* Intestazione Bambino & Selettore Profilo */}
+      {/* Intestazione Bambino Esclusiva */}
       <div className="flex flex-col md:flex-row items-center justify-between gap-4 glass-card p-5 border-emerald-500/30">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center font-bold text-2xl shadow-lg">
-            S
-          </div>
+          <img
+            src={getAvatarUrl(children.find((c) => c.id === selectedChildId)?.avatar_preset_id)}
+            alt={children.find((c) => c.id === selectedChildId)?.name || "Bambino"}
+            className="w-14 h-14 rounded-2xl bg-slate-900 border border-emerald-500/40 p-1 object-contain shadow-lg"
+          />
           <div>
-            <h1 className="text-xl font-black text-white">Libreria Magica</h1>
+            <h1 className="text-xl font-black text-white">
+              Libreria di {children.find((c) => c.id === selectedChildId)?.name || "Favole"}
+            </h1>
             <p className="text-xs text-emerald-300">
-              Scegli chi sta leggendo ed esplora le tue favole
+              Esplora e leggi le storie magiche assegnate a te
             </p>
           </div>
         </div>
-
-        {/* Selettore Bambini */}
-        {children.length > 0 && (
-          <div className="flex items-center gap-2 overflow-x-auto max-w-full py-1">
-            {children.map((child) => {
-              const isActive = selectedChildId === child.id;
-              return (
-                <button
-                  key={child.id}
-                  onClick={() => handleSelectChild(child.id)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-2xl text-xs font-bold transition-all ${
-                    isActive
-                      ? "bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/30 scale-105"
-                      : "bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800"
-                  }`}
-                >
-                  <User className="w-4 h-4" />
-                  <span>{child.name}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
 
         <button
           onClick={() => setShowExitModal(true)}
@@ -315,13 +332,22 @@ export default function ChildReaderPage() {
             </div>
           </div>
 
-          <h2 className="text-2xl md:text-3xl font-extrabold text-emerald-300">
-            {activeStory.title}
-          </h2>
+          <h1 className="text-2xl md:text-3xl font-extrabold text-center text-emerald-300">
+            {activeStory.title.replace(/^#+\s*/, "")}
+          </h1>
 
           {/* Testo pagina corrente */}
           <div className="min-h-[300px] p-6 md:p-10 rounded-3xl bg-slate-900/90 border border-slate-800 text-slate-100 text-lg md:text-xl leading-relaxed whitespace-pre-line flex flex-col justify-center">
-            {storyPages.length > 0 ? storyPages[currentPageIdx] : activeStory.generated_text}
+            {(() => {
+              const text =
+                storyPages.length > 0
+                  ? storyPages[currentPageIdx]
+                  : activeStory.generated_text;
+              if (currentPageIdx === 0) {
+                return text.replace(/^#\s*[^\n]+\n*/, "").trim();
+              }
+              return text;
+            })()}
           </div>
 
           {/* Barra di avanzamento e navigazione pagine */}

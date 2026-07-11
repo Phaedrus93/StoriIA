@@ -235,4 +235,32 @@ describe("Integration Test — PostgreSQL RLS Engine Real Execution (4-test-inte
       ).rejects.toThrow(/Accesso negato: impossibile registrare tentativi PIN per una famiglia non propria/i);
     });
   });
+
+  it("deve FISICAMENTE BLOCCARE l'eliminazione di una storia con source = 'preset' via RLS DELETE policy", async () => {
+    await db.transaction(async (tx) => {
+      await tx.exec(`
+        SET LOCAL ROLE authenticated;
+        SET LOCAL "request.jwt.claim.sub" = '11111111-1111-1111-1111-111111111111';
+        SET LOCAL "request.jwt.claims" = '{"sub":"11111111-1111-1111-1111-111111111111","app_metadata":{"is_child_mode":false}}';
+      `);
+
+      // Verifica che le storie preset predefinite siano presenti
+      const resBefore = await tx.query(
+        "SELECT count(*) as cnt FROM public.stories WHERE source = 'preset';"
+      );
+      const initialCount = Number(resBefore.rows[0].cnt);
+      expect(initialCount).toBeGreaterThan(0);
+
+      // Tenta di eliminare una storia preset
+      await tx.exec(`
+        DELETE FROM public.stories WHERE source = 'preset';
+      `);
+
+      // Verifica che NESSUNA storia preset sia stata eliminata dal motore RLS
+      const resAfter = await tx.query(
+        "SELECT count(*) as cnt FROM public.stories WHERE source = 'preset';"
+      );
+      expect(Number(resAfter.rows[0].cnt)).toBe(initialCount);
+    });
+  });
 });

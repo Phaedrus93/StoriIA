@@ -12,6 +12,8 @@ const nextConfig: NextConfig = {
     "192.168.0.88",
     "192.168.1.88",
     "storiia.local",
+    "*.trycloudflare.com",
+    "prize-outreach-eco-inspired.trycloudflare.com",
   ],
 };
 

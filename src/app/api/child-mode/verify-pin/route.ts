@@ -116,11 +116,13 @@ export async function POST(req: Request) {
       },
     });
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       message: "PIN corretto. Uscita dalla modalità bambino completata.",
       requireClientRefresh: true,
     });
+    response.cookies.delete("storiia_child_mode");
+    return response;
   } catch (err: unknown) {
     const message =
       err instanceof Error ? err.message : "Errore imprevisto server";
