@@ -25,16 +25,24 @@ export async function POST(req: Request) {
   let event: Stripe.Event;
 
   try {
-    if (webhookSecret && signature) {
-      event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
-    } else {
-      if (process.env.NODE_ENV === "production") {
+    if (process.env.NODE_ENV === "production") {
+      if (!webhookSecret) {
         return NextResponse.json(
-          { error: "Webhook signature mancante in produzione" },
+          { error: "STRIPE_WEBHOOK_SECRET non configurato in produzione" },
+          { status: 500 }
+        );
+      }
+      if (!signature) {
+        return NextResponse.json(
+          { error: "Header stripe-signature mancante in produzione" },
           { status: 400 }
         );
       }
-      // Modalità dev: accetta payload non firmati con log
+      event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
+    } else if (webhookSecret && signature) {
+      event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
+    } else {
+      // Modalità di sviluppo locale non-prod
       console.warn("[Stripe Webhook] Attenzione: payload non firmato accettato in ambiente non-production");
       event = JSON.parse(rawBody) as Stripe.Event;
     }
