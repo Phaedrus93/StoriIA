@@ -2,7 +2,8 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
 import fs from "fs";
 import path from "path";
-import { enforceSuspensionOnDowngrade } from "@/lib/billing-utils";
+import { downgradeFamilyTierServer } from "@/app/api/family/downgrade-tier/route";
+import { reactivateChildProfileServer } from "@/app/api/child/reactivate/route";
 
 describe("StoriIA v1.0 - Downgrade Tier & enforceSuspensionOnDowngrade Real Execution", () => {
   let db: PGlite;
@@ -31,10 +32,18 @@ describe("StoriIA v1.0 - Downgrade Tier & enforceSuspensionOnDowngrade Real Exec
           then: async (resolve: (val: any) => void) => {
             const whereStr = whereClauses.length ? `WHERE ${whereClauses.join(" AND ")}` : "";
             const res = await pglite.query(`SELECT * FROM public.${table} ${whereStr} ${orderClause}`);
-            resolve({ data: res.rows, error: null });
+            resolve({ data: res.rows, count: res.rows.length, error: null });
           },
         }),
         update: (data: Record<string, any>) => ({
+          eq: async (col: string, val: any) => {
+            const setStr = Object.entries(data)
+              .map(([k, v]) => `${k} = ${typeof v === "boolean" ? v : `'${v}'`}`)
+              .join(", ");
+            const formattedVal = typeof val === "string" ? `'${val}'` : val;
+            await pglite.query(`UPDATE public.${table} SET ${setStr} WHERE ${col} = ${formattedVal}`);
+            return { error: null };
+          },
           in: async (col: string, vals: string[]) => {
             const setStr = Object.entries(data)
               .map(([k, v]) => `${k} = ${typeof v === "boolean" ? v : `'${v}'`}`)
@@ -95,14 +104,16 @@ describe("StoriIA v1.0 - Downgrade Tier & enforceSuspensionOnDowngrade Real Exec
     await db.close();
   });
 
-  it("deve chiamare la funzione VERA enforceSuspensionOnDowngrade e sospendere realmente i 3 profili bambino eccedenti su PGlite", async () => {
+  it("deve chiamare l'endpoint REALE /api/family/downgrade-tier e sospendere i 3 profili bambino eccedenti su PGlite", async () => {
+    const userId = "11111111-1111-1111-1111-111111111111";
     const familyId = "22222222-2222-2222-2222-222222222222";
     const adapter = createPGliteSupabaseAdapter(db);
 
-    // Chiamata alla funzione VERA dell'applicazione, non simulata in test
-    const { suspendedCount } = await enforceSuspensionOnDowngrade(adapter, familyId, "free");
+    // Chiamata all'endpoint applicativo REALE di downgrade tier
+    const res = await downgradeFamilyTierServer(adapter, userId, "free");
 
-    expect(suspendedCount).toBe(3);
+    expect(res.success).toBe(true);
+    expect(res.suspendedCount).toBe(3);
 
     // Verifica su database reale PGlite
     const countActive = await db.query<{ count: string }>(`
@@ -116,12 +127,33 @@ describe("StoriIA v1.0 - Downgrade Tier & enforceSuspensionOnDowngrade Real Exec
     expect(Number(countSuspended.rows[0].count)).toBe(3);
   });
 
-  it("deve confermare nel DB che l'ultimo profilo bambino è stato sospeso (is_suspended = true)", async () => {
-    const childId = "33333333-3333-3333-3333-333333333304";
-    const res = await db.query<{ is_suspended: boolean }>(`
-      SELECT is_suspended FROM public.child_profiles WHERE id = '${childId}';
-    `);
+  it("deve impedire tentativi di UPGRADE diretti (es. da free a family) tramite /api/family/downgrade-tier", async () => {
+    const userId = "11111111-1111-1111-1111-111111111111";
+    const adapter = createPGliteSupabaseAdapter(db);
 
-    expect(res.rows[0].is_suspended).toBe(true);
+    // Ora la famiglia è a "free" (rank 1), proviamo ad aggiornare a "family" (rank 3)
+    const res = await downgradeFamilyTierServer(adapter, userId, "family");
+
+    expect(res.status).toBe(403);
+    expect(res.error).toContain("upgrade a un piano superiore non è consentito");
+  });
+
+  it("deve chiamare l'endpoint REALE /api/child/reactivate e bloccare la riattivazione se si supera il limite del piano", async () => {
+    const userId = "11111111-1111-1111-1111-111111111111";
+    const suspendedChildId = "33333333-3333-3333-3333-333333333304";
+    const adapter = createPGliteSupabaseAdapter(db);
+
+    // Chiamata alla funzione core REALE dell'endpoint /api/child/reactivate
+    const res = await reactivateChildProfileServer(adapter, adapter, userId, suspendedChildId);
+
+    expect(res.status).toBe(403);
+    expect(res.requiresUpgrade).toBe(true);
+    expect(res.error).toContain("Hai raggiunto il limite massimo");
+
+    // Verifica su database reale PGlite che il profilo sia rimasto sospeso (is_suspended = true)
+    const childRes = await db.query<{ is_suspended: boolean }>(`
+      SELECT is_suspended FROM public.child_profiles WHERE id = '${suspendedChildId}';
+    `);
+    expect(childRes.rows[0].is_suspended).toBe(true);
   });
 });
