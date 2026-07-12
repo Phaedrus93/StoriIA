@@ -120,28 +120,27 @@ export async function GET(req: Request) {
   }
 }
 
-export async function POST(req: Request) {
-  try {
-    const supabase = await createClient();
-    const body = await req.json();
-    const { action, childId, cosmeticId } = body;
+export async function handleGamificationActionServer(
+  supabase: any,
+  adminClient: any,
+  body: any
+): Promise<{ success?: boolean; error?: string; status?: number; [k: string]: any }> {
+  const { action, childId, cosmeticId } = body;
 
-    if (!childId) {
-      return NextResponse.json({ error: "childId obbligatorio" }, { status: 400 });
-    }
+  if (!childId) {
+    return { error: "childId obbligatorio", status: 400 };
+  }
 
-    const authCheck = await verifyChildOwnership(supabase, childId);
-    if (!authCheck.authorized) {
-      return NextResponse.json({ error: authCheck.reason }, { status: 403 });
-    }
+  const authCheck = await verifyChildOwnership(supabase, childId);
+  if (!authCheck.authorized) {
+    return { error: authCheck.reason, status: 403 };
+  }
 
-    const adminClient = createAdminClient();
-
-    const { data: child, error: childErr } = await adminClient
-      .from("child_profiles")
-      .select("id, name, adventure_points")
-      .eq("id", childId)
-      .single();
+  const { data: child, error: childErr } = await adminClient
+    .from("child_profiles")
+    .select("id, name, adventure_points")
+    .eq("id", childId)
+    .single();
 
     if (childErr || !child) {
       return NextResponse.json({ error: "Profilo bambino non trovato" }, { status: 404 });
@@ -151,7 +150,7 @@ export async function POST(req: Request) {
 
     if (action === "award_reading_points") {
       const rewardAmount = 15; // +15 Punti Avventura per ogni lettura completata
-      const newPoints = currentPoints + rewardAmount;
+      let newPoints = currentPoints + rewardAmount;
 
       await adminClient
         .from("child_profiles")
@@ -189,24 +188,26 @@ export async function POST(req: Request) {
           // Se completata per la prima volta, assegna anche i punti premio missione
           if (isCompletedNow) {
             const bonus = q.points_reward || 15;
+            newPoints += bonus;
             await adminClient
               .from("child_profiles")
-              .update({ adventure_points: newPoints + bonus })
+              .update({ adventure_points: newPoints })
               .eq("id", childId);
           }
         }
       }
 
-      return NextResponse.json({
+      return {
         success: true,
         adventurePoints: newPoints,
         rewardGiven: rewardAmount,
-      });
+        status: 200,
+      };
     }
 
     if (action === "unlock_cosmetic") {
       if (!cosmeticId) {
-        return NextResponse.json({ error: "cosmeticId mancante" }, { status: 400 });
+        return { error: "cosmeticId mancante", status: 400 };
       }
 
       const { data: cosmetic } = await adminClient
@@ -216,7 +217,7 @@ export async function POST(req: Request) {
         .single();
 
       if (!cosmetic) {
-        return NextResponse.json({ error: "Cosmetico non trovato" }, { status: 404 });
+        return { error: "Cosmetico non trovato", status: 404 };
       }
 
       // Verifica piano richiesto
@@ -239,14 +240,12 @@ export async function POST(req: Request) {
         const currentOrder = tierOrder[tier] ?? 0;
 
         if (currentOrder < requiredOrder) {
-          return NextResponse.json(
-            {
-              error: `Questo premio richiede il piano ${cosmetic.requires_plan?.toUpperCase()}`,
-              requiresUpgrade: true,
-              requiredPlan: cosmetic.requires_plan,
-            },
-            { status: 403 }
-          );
+          return {
+            error: `Questo premio richiede il piano ${cosmetic.requires_plan?.toUpperCase()}`,
+            requiresUpgrade: true,
+            requiredPlan: cosmetic.requires_plan,
+            status: 403,
+          };
         }
       }
 
@@ -259,23 +258,19 @@ export async function POST(req: Request) {
         .maybeSingle();
 
       if (alreadyUnlocked) {
-        return NextResponse.json(
-          {
-            error: "Hai già sbloccato questo premio!",
-            alreadyUnlocked: true,
-          },
-          { status: 400 }
-        );
+        return {
+          error: "Hai già sbloccato questo premio!",
+          alreadyUnlocked: true,
+          status: 400,
+        };
       }
 
       if (currentPoints < cosmetic.cost_points) {
-        return NextResponse.json(
-          {
-            error: "Punti Avventura insufficienti per questo premio!",
-            insufficientPoints: true,
-          },
-          { status: 400 }
-        );
+        return {
+          error: "Punti Avventura insufficienti per questo premio!",
+          insufficientPoints: true,
+          status: 400,
+        };
       }
 
       const remainingPoints = currentPoints - cosmetic.cost_points;
@@ -290,17 +285,18 @@ export async function POST(req: Request) {
         cosmetic_id: cosmeticId,
       });
 
-      return NextResponse.json({
+      return {
         success: true,
         adventurePoints: remainingPoints,
         unlockedCosmeticId: cosmeticId,
-      });
+        status: 200,
+      };
     }
 
     if (action === "set_active_cosmetic") {
       const { slot, cosmeticId: activeCosmeticId } = body;
       if (!slot || !["badge", "frame"].includes(slot)) {
-        return NextResponse.json({ error: "slot deve essere 'badge' o 'frame'" }, { status: 400 });
+        return { error: "slot deve essere 'badge' o 'frame'", status: 400 };
       }
 
       const updateField = slot === "badge" ? "active_badge_id" : "active_frame_id";
@@ -314,7 +310,7 @@ export async function POST(req: Request) {
           .maybeSingle();
 
         if (!owned) {
-          return NextResponse.json({ error: "Cosmetico non sbloccato" }, { status: 403 });
+          return { error: "Cosmetico non sbloccato", status: 403 };
         }
       }
 
@@ -323,10 +319,19 @@ export async function POST(req: Request) {
         .update({ [updateField]: activeCosmeticId || null })
         .eq("id", childId);
 
-      return NextResponse.json({ success: true, slot, active: activeCosmeticId || null });
+      return { success: true, slot, active: activeCosmeticId || null, status: 200 };
     }
 
-    return NextResponse.json({ error: "Azione non supportata" }, { status: 400 });
+    return { error: "Azione non supportata", status: 400 };
+}
+
+export async function POST(req: Request) {
+  try {
+    const supabase = await createClient();
+    const adminClient = createAdminClient();
+    const body = await req.json();
+    const result = await handleGamificationActionServer(supabase, adminClient, body);
+    return NextResponse.json(result, { status: result.status || 200 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Errore gamification post";
     return NextResponse.json({ error: message }, { status: 500 });
