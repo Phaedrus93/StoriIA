@@ -34,6 +34,7 @@ describe("StoriIA v1.0.0 - Test di Conformità e Integrità del Sistema su DB Re
     await db.exec(fs.readFileSync(path.resolve(process.cwd(), "sql/04_v1_phase2_billing_and_credits.sql"), "utf-8"));
     await db.exec(fs.readFileSync(path.resolve(process.cwd(), "sql/05_v1_phase3_gamification.sql"), "utf-8"));
     await db.exec(fs.readFileSync(path.resolve(process.cwd(), "supabase/migrations/20260712000000_v1_unlockable_content.sql"), "utf-8"));
+    await db.exec(fs.readFileSync(path.resolve(process.cwd(), "supabase/migrations/20260712100000_v1_phase4_notifications.sql"), "utf-8"));
     await db.exec(fs.readFileSync(path.resolve(process.cwd(), "supabase/migrations/20260712120000_v1_bugfixes_schema.sql"), "utf-8"));
 
     await db.exec(`
@@ -58,6 +59,26 @@ describe("StoriIA v1.0.0 - Test di Conformità e Integrità del Sistema su DB Re
       VALUES 
         ('44444444-4444-4444-4444-444444444401', '22222222-2222-2222-2222-222222222222', -1, 'GENERATION_SPEND', 'Generazione Favola Famiglia A'),
         ('44444444-4444-4444-4444-444444444402', '88888888-8888-8888-8888-888888888888', 30, 'SUBSCRIPTION_RENEWAL', 'Ricarica Mensile Famiglia B');
+
+      INSERT INTO public.notifications (id, family_id, category, title, message)
+      VALUES
+        ('55555555-5555-5555-5555-555555555501', '22222222-2222-2222-2222-222222222222', 'system', 'Notifica Famiglia A', 'Benvenuta A'),
+        ('55555555-5555-5555-5555-555555555502', '88888888-8888-8888-8888-888888888888', 'system', 'Notifica Famiglia B', 'Benvenuta B');
+
+      INSERT INTO public.child_profiles (id, family_id, name)
+      VALUES
+        ('66666666-6666-6666-6666-666666666601', '22222222-2222-2222-2222-222222222222', 'Bambino Famiglia A'),
+        ('66666666-6666-6666-6666-666666666602', '88888888-8888-8888-8888-888888888888', 'Bambino Famiglia B');
+
+      INSERT INTO public.stories (id, family_id, target_age_range, generated_text)
+      VALUES
+        ('77777777-7777-7777-7777-777777777701', '22222222-2222-2222-2222-222222222222', '4-6', 'Testo A'),
+        ('77777777-7777-7777-7777-777777777702', '88888888-8888-8888-8888-888888888888', '4-6', 'Testo B');
+
+      INSERT INTO public.story_assignments (story_id, child_profile_id)
+      VALUES
+        ('77777777-7777-7777-7777-777777777701', '66666666-6666-6666-6666-666666666601'),
+        ('77777777-7777-7777-7777-777777777702', '66666666-6666-6666-6666-666666666602');
     `);
   });
 
@@ -103,6 +124,33 @@ describe("StoriIA v1.0.0 - Test di Conformità e Integrità del Sistema su DB Re
       expect(res.rows.length).toBe(1);
       expect(res.rows[0].id).toBe("44444444-4444-4444-4444-444444444402");
       expect(res.rows[0].description).toBe("Ricarica Mensile Famiglia B");
+
+      await db.exec(`RESET ROLE;`);
+    });
+
+    it("deve impedire a una famiglia di accedere alle notifiche e alle assegnazioni storie di un'altra famiglia tramite RLS su PGlite", async () => {
+      const parentAUid = "11111111-1111-1111-1111-111111111111";
+
+      await db.exec(`
+        SET ROLE authenticated;
+        SET request.jwt.claim.sub = '${parentAUid}';
+      `);
+
+      // 1. Verifica isolamento RLS reale sulla tabella notifications
+      const notifRes = await db.query<{ id: string; title: string; family_id: string }>(`
+        SELECT id, title, family_id FROM public.notifications;
+      `);
+      expect(notifRes.rows.length).toBeGreaterThanOrEqual(1);
+      expect(notifRes.rows.some((row) => row.id === "55555555-5555-5555-5555-555555555501")).toBe(true);
+      expect(notifRes.rows.some((row) => row.id === "55555555-5555-5555-5555-555555555502")).toBe(false);
+
+      // 2. Verifica isolamento RLS reale sulla tabella story_assignments
+      const assignRes = await db.query<{ story_id: string; child_profile_id: string }>(`
+        SELECT story_id, child_profile_id FROM public.story_assignments;
+      `);
+      expect(assignRes.rows.length).toBe(1);
+      expect(assignRes.rows[0].story_id).toBe("77777777-7777-7777-7777-777777777701");
+      expect(assignRes.rows.some((row) => row.story_id === "77777777-7777-7777-7777-777777777702")).toBe(false);
 
       await db.exec(`RESET ROLE;`);
     });
