@@ -1,127 +1,136 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { PGlite } from "@electric-sql/pglite";
+import fs from "fs";
+import path from "path";
 
-describe("StoriIA v1.0.0 - Test di Conformità e Integrità del Sistema (PRD v1)", () => {
-  describe("1. Crediti & Rimborso Automatico (Nessuno scalo in caso di fallimento o blocco moderazione)", () => {
-    it("deve rimborsare integralmente (+1) il credito addebitato se la moderazione preventiva o la generazione AI fallisce", () => {
-      let creditsBalance = 5;
-      const initialBalance = creditsBalance;
+describe("StoriIA v1.0.0 - Test di Conformità e Integrità del Sistema su DB Reale PGlite (PRD v1)", () => {
+  let db: PGlite;
 
-      // Fase A: Scalaggio atomico preventivo prima di inviare a Gemini
-      creditsBalance -= 1;
-      expect(creditsBalance).toBe(4);
+  beforeAll(async () => {
+    db = new PGlite();
 
-      // Fase B: Simulazione blocco moderazione o errore di rete Gemini
-      const moderationBlocked = true;
+    // 1. Setup ruoli e funzioni auth di Supabase nel DB in-memory
+    await db.exec(`
+      CREATE ROLE authenticated NOLOGIN;
+      CREATE ROLE anon NOLOGIN;
+      CREATE ROLE service_role NOLOGIN;
 
-      if (moderationBlocked) {
-        // Logica di catch in /api/generate-story: rimborso +1 sul saldo ed entry GENERATION_REFUND su credit_ledger
-        creditsBalance += 1;
-      }
+      CREATE SCHEMA IF NOT EXISTS auth;
+      CREATE TABLE IF NOT EXISTS auth.users (id UUID PRIMARY KEY);
 
-      // Verifica finale: il saldo della famiglia deve essere identico al saldo iniziale
-      expect(creditsBalance).toBe(initialBalance);
+      CREATE OR REPLACE FUNCTION auth.uid() RETURNS UUID
+      LANGUAGE sql STABLE AS $$
+        SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid;
+      $$;
+
+      CREATE OR REPLACE FUNCTION auth.jwt() RETURNS JSONB
+      LANGUAGE sql STABLE AS $$
+        SELECT COALESCE(NULLIF(current_setting('request.jwt.claims', true), ''), '{}')::jsonb;
+      $$;
+    `);
+
+    // 2. Caricamento schema reale completo e migration
+    await db.exec(fs.readFileSync(path.resolve(process.cwd(), "sql/01_mvp_schema.sql"), "utf-8"));
+    await db.exec(fs.readFileSync(path.resolve(process.cwd(), "sql/04_v1_phase2_billing_and_credits.sql"), "utf-8"));
+    await db.exec(fs.readFileSync(path.resolve(process.cwd(), "sql/05_v1_phase3_gamification.sql"), "utf-8"));
+    await db.exec(fs.readFileSync(path.resolve(process.cwd(), "supabase/migrations/20260712000000_v1_unlockable_content.sql"), "utf-8"));
+    await db.exec(fs.readFileSync(path.resolve(process.cwd(), "supabase/migrations/20260712120000_v1_bugfixes_schema.sql"), "utf-8"));
+
+    await db.exec(`
+      GRANT USAGE ON SCHEMA public TO authenticated, anon, service_role;
+      GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated, anon, service_role;
+      GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated, anon, service_role;
+      GRANT ALL ON ALL ROUTINES IN SCHEMA public TO authenticated, anon, service_role;
+    `);
+
+    // 3. Popolamento dati reali su DB (2 utenti e 2 famiglie separate)
+    await db.exec(`
+      INSERT INTO auth.users (id) VALUES 
+        ('11111111-1111-1111-1111-111111111111'),
+        ('99999999-9999-9999-9999-999999999999');
+
+      INSERT INTO public.families (id, parent_user_id, subscription_tier, credits_balance)
+      VALUES 
+        ('22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', 'free', 10),
+        ('88888888-8888-8888-8888-888888888888', '99999999-9999-9999-9999-999999999999', 'premium', 50);
+
+      INSERT INTO public.credit_ledger (id, family_id, amount, transaction_type, description)
+      VALUES 
+        ('44444444-4444-4444-4444-444444444401', '22222222-2222-2222-2222-222222222222', -1, 'GENERATION_SPEND', 'Generazione Favola Famiglia A'),
+        ('44444444-4444-4444-4444-444444444402', '88888888-8888-8888-8888-888888888888', 30, 'SUBSCRIPTION_RENEWAL', 'Ricarica Mensile Famiglia B');
+    `);
+  });
+
+  afterAll(async () => {
+    await db.close();
+  });
+
+  describe("1. Isolamento Row Level Security (RLS) su credit_ledger tra Famiglie Diverse", () => {
+    it("deve impedire al genitore A (autenticato come ruolo Postgres authenticated) di leggere le transazioni credit_ledger della famiglia B", async () => {
+      const parentAUid = "11111111-1111-1111-1111-111111111111";
+
+      await db.exec(`
+        SET ROLE authenticated;
+        SET request.jwt.claim.sub = '${parentAUid}';
+      `);
+
+      // Interrogazione diretta sul DB reale con ruolo authenticated
+      const res = await db.query<{ id: string; description: string; family_id: string }>(`
+        SELECT id, description, family_id FROM public.credit_ledger;
+      `);
+
+      // Verifica su motore Postgres reale
+      expect(res.rows.length).toBe(1);
+      expect(res.rows[0].id).toBe("44444444-4444-4444-4444-444444444401");
+      expect(res.rows[0].description).toBe("Generazione Favola Famiglia A");
+      expect(res.rows.some((row) => row.family_id === "88888888-8888-8888-8888-888888888888")).toBe(false);
+
+      await db.exec(`RESET ROLE;`);
+    });
+
+    it("deve consentire al genitore B di leggere solo ed esclusivamente le proprie transazioni credit_ledger", async () => {
+      const parentBUid = "99999999-9999-9999-9999-999999999999";
+
+      await db.exec(`
+        SET ROLE authenticated;
+        SET request.jwt.claim.sub = '${parentBUid}';
+      `);
+
+      const res = await db.query<{ id: string; description: string }>(`
+        SELECT id, description FROM public.credit_ledger;
+      `);
+
+      expect(res.rows.length).toBe(1);
+      expect(res.rows[0].id).toBe("44444444-4444-4444-4444-444444444402");
+      expect(res.rows[0].description).toBe("Ricarica Mensile Famiglia B");
+
+      await db.exec(`RESET ROLE;`);
     });
   });
 
-  describe("2. Isolamento Row Level Security (RLS) su Ledger, Notifiche e Profili Bambino", () => {
-    it("deve impedire a un genitore autenticato di leggere il credit_ledger di un'altra famiglia", () => {
-      const parentAuthUidA = "user-a-uuid";
-      const familyA = { id: "family-a-uuid", parent_user_id: parentAuthUidA };
+  describe("2. Transazionalità e Rimborso Reale su DB (Nessuno scalo in caso di fallimento o blocco)", () => {
+    it("deve eseguire consume_credit e refund_credit in modo atomico sul DB reale PGlite", async () => {
+      const familyAId = "22222222-2222-2222-2222-222222222222";
 
-      const familyB = { id: "family-b-uuid", parent_user_id: "user-b-uuid" };
+      // Legge saldo iniziale
+      const initRes = await db.query<{ credits_balance: number }>(`
+        SELECT credits_balance FROM public.families WHERE id = '${familyAId}'
+      `);
+      const initialBalance = initRes.rows[0].credits_balance;
 
-      const ledgerEntriesDB = [
-        { id: "entry-1", family_id: familyA.id, amount: -1, description: "Spesa Famiglia A" },
-        { id: "entry-2", family_id: familyB.id, amount: 30, description: "Ricarica Famiglia B" },
-      ];
+      // Consuma credito (es. generazione iniziata)
+      await db.query(`SELECT public.consume_credit('${familyAId}', 'Inizio Generazione AI', NULL)`);
+      const afterConsume = await db.query<{ credits_balance: number }>(`
+        SELECT credits_balance FROM public.families WHERE id = '${familyAId}'
+      `);
+      expect(afterConsume.rows[0].credits_balance).toBe(initialBalance - 1);
 
-      // Simulazione policy RLS SQL: SELECT * FROM credit_ledger WHERE family_id IN (SELECT id FROM families WHERE parent_user_id = auth.uid())
-      const accessibleEntriesForUserA = ledgerEntriesDB.filter(
-        (entry) => entry.family_id === familyA.id
-      );
-
-      expect(accessibleEntriesForUserA).toHaveLength(1);
-      expect(accessibleEntriesForUserA[0].id).toBe("entry-1");
-      expect(accessibleEntriesForUserA.some((e) => e.family_id === familyB.id)).toBe(false);
-    });
-
-    it("deve impedire a una famiglia di accedere alle notifiche e alle assegnazioni storie di un'altra famiglia", () => {
-      const familyAId = "fam-a";
-      const familyBId = "fam-b";
-
-      const notificationsDB = [
-        { id: "notif-1", family_id: familyAId, title: "Benvenuto Famiglia A" },
-        { id: "notif-2", family_id: familyBId, title: "Benvenuto Famiglia B" },
-      ];
-
-      const rlsFilteredForFamilyA = notificationsDB.filter((n) => n.family_id === familyAId);
-      expect(rlsFilteredForFamilyA).toHaveLength(1);
-      expect(rlsFilteredForFamilyA[0].title).toBe("Benvenuto Famiglia A");
-    });
-  });
-
-  describe("3. Webhook Stripe: Pagamento Fallito -> Freeze (Nessuna cancellazione dati)", () => {
-    it("deve impostare subscription_status = 'frozen' al ricevimento dell'evento invoice.payment_failed preservando profili bambino e storie", () => {
-      const familyRecord = {
-        id: "family-test-uuid",
-        subscription_tier: "premium",
-        subscription_status: "active",
-        childrenCount: 3,
-        storiesCount: 15,
-      };
-
-      // Simulazione evento webhook Stripe 'invoice.payment_failed'
-      const stripeEvent = {
-        type: "invoice.payment_failed",
-        data: {
-          object: {
-            customer: "cus_stripe_123",
-          },
-        },
-      };
-
-      if (stripeEvent.type === "invoice.payment_failed") {
-        familyRecord.subscription_status = "frozen";
-      }
-
-      // Verifiche:
-      // 1. Lo status diventa 'frozen'
-      expect(familyRecord.subscription_status).toBe("frozen");
-      // 2. Il tier rimane inalterato
-      expect(familyRecord.subscription_tier).toBe("premium");
-      // 3. I profili bambino e le storie NON vengono toccati o eliminati
-      expect(familyRecord.childrenCount).toBe(3);
-      expect(familyRecord.storiesCount).toBe(15);
-    });
-  });
-
-  describe("4. Cancellazione Account e Diritto all'Oblio (GDPR Art. 17)", () => {
-    it("deve eliminare a cascata la famiglia, i profili bambino e tutte le storie associate alla cancellazione del genitore", () => {
-      let database = {
-        families: [{ id: "fam-to-delete", parent_user_id: "user-gdpr" }],
-        children: [
-          { id: "child-1", family_id: "fam-to-delete", display_name: "Marco" },
-          { id: "child-2", family_id: "fam-to-delete", display_name: "Sara" },
-        ],
-        stories: [{ id: "story-1", family_id: "fam-to-delete" }],
-        story_assignments: [{ story_id: "story-1", child_profile_id: "child-1" }],
-      };
-
-      // Simulazione DELETE /api/family/delete-account
-      const targetFamilyId = "fam-to-delete";
-
-      // Cancellazione a cascata
-      database.families = database.families.filter((f) => f.id !== targetFamilyId);
-      database.children = database.children.filter((c) => c.family_id !== targetFamilyId);
-      database.stories = database.stories.filter((s) => s.family_id !== targetFamilyId);
-      database.story_assignments = database.story_assignments.filter(
-        (a) => a.story_id !== "story-1"
-      );
-
-      expect(database.families).toHaveLength(0);
-      expect(database.children).toHaveLength(0);
-      expect(database.stories).toHaveLength(0);
-      expect(database.story_assignments).toHaveLength(0);
+      // Rimborso per fallimento moderazione o errore di rete
+      await db.query(`SELECT public.refund_credit('${familyAId}', 'Rimborso per blocco di sicurezza', NULL)`);
+      const afterRefund = await db.query<{ credits_balance: number }>(`
+        SELECT credits_balance FROM public.families WHERE id = '${familyAId}'
+      `);
+      expect(afterRefund.rows[0].credits_balance).toBe(initialBalance);
     });
   });
 });
