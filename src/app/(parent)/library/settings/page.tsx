@@ -147,12 +147,20 @@ export default function SettingsPage() {
         .eq("id", editingSettingId);
       handleCancelEdit();
     } else {
-      await supabase.from("settings").insert({
-        family_id: familyId,
-        owner_child_profile_id: ownerChildId,
-        name: name.trim(),
-        description: description.trim(),
+      const res = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          description: description.trim(),
+        }),
       });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Impossibile creare l'ambientazione.");
+        setIsCreating(false);
+        return;
+      }
       setName("");
       setDescription("");
     }

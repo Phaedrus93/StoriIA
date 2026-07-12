@@ -1,5 +1,43 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+
+/**
+ * Funzione di utilità per verificare la titolarità / autorizzazione sul profilo bambino.
+ * Previene vulnerabilità IDOR garantendo che il childId appartenga alla famiglia del genitore
+ * o alla sessione attiva.
+ */
+async function verifyChildOwnership(supabase: any, childId: string) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { authorized: false, reason: "Utente non autenticato" };
+  }
+
+  const { data: child, error } = await supabase
+    .from("child_profiles")
+    .select("id, family_id")
+    .eq("id", childId)
+    .single();
+
+  if (error || !child) {
+    return { authorized: false, reason: "Profilo bambino non trovato" };
+  }
+
+  const { data: family } = await supabase
+    .from("families")
+    .select("parent_user_id")
+    .eq("id", child.family_id)
+    .single();
+
+  if (family?.parent_user_id !== user.id) {
+    return { authorized: false, reason: "Non autorizzato per questo profilo bambino" };
+  }
+
+  return { authorized: true, child, user };
+}
 
 export async function GET(req: Request) {
   try {
@@ -11,8 +49,15 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "parametro childId mancante" }, { status: 400 });
     }
 
+    const authCheck = await verifyChildOwnership(supabase, childId);
+    if (!authCheck.authorized) {
+      return NextResponse.json({ error: authCheck.reason }, { status: 403 });
+    }
+
+    const adminClient = createAdminClient();
+
     // 1. Dati profilo, punti avventura, badge/frame attivi
-    const { data: child, error: childErr } = await supabase
+    const { data: child, error: childErr } = await adminClient
       .from("child_profiles")
       .select("id, name, adventure_points, avatar_preset_id, active_badge_id, active_frame_id")
       .eq("id", childId)
@@ -23,7 +68,7 @@ export async function GET(req: Request) {
     }
 
     // 2. Piano abbonamento della famiglia (per mostrare lock cosmetici)
-    const { data: familyData } = await supabase
+    const { data: familyData } = await adminClient
       .from("child_profiles")
       .select("family_id")
       .eq("id", childId)
@@ -31,7 +76,7 @@ export async function GET(req: Request) {
 
     let familyTier = "free";
     if (familyData?.family_id) {
-      const { data: fam } = await supabase
+      const { data: fam } = await adminClient
         .from("families")
         .select("subscription_tier")
         .eq("id", familyData.family_id)
@@ -40,23 +85,23 @@ export async function GET(req: Request) {
     }
 
     // 3. Catalogo missioni di lettura e progressi
-    const { data: quests } = await supabase
+    const { data: quests } = await adminClient
       .from("reading_quests")
       .select("*")
       .order("target_count", { ascending: true });
 
-    const { data: progressList } = await supabase
+    const { data: progressList } = await adminClient
       .from("child_quest_progress")
       .select("*")
       .eq("child_profile_id", childId);
 
     // 4. Catalogo premi cosmetici e sbloccati
-    const { data: cosmetics } = await supabase
+    const { data: cosmetics } = await adminClient
       .from("cosmetic_items")
       .select("*")
       .order("cost_points", { ascending: true });
 
-    const { data: unlockedList } = await supabase
+    const { data: unlockedList } = await adminClient
       .from("child_unlocked_cosmetics")
       .select("*")
       .eq("child_profile_id", childId);
@@ -85,7 +130,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "childId obbligatorio" }, { status: 400 });
     }
 
-    const { data: child, error: childErr } = await supabase
+    const authCheck = await verifyChildOwnership(supabase, childId);
+    if (!authCheck.authorized) {
+      return NextResponse.json({ error: authCheck.reason }, { status: 403 });
+    }
+
+    const adminClient = createAdminClient();
+
+    const { data: child, error: childErr } = await adminClient
       .from("child_profiles")
       .select("id, name, adventure_points")
       .eq("id", childId)
@@ -101,16 +153,16 @@ export async function POST(req: Request) {
       const rewardAmount = 15; // +15 Punti Avventura per ogni lettura completata
       const newPoints = currentPoints + rewardAmount;
 
-      await supabase
+      await adminClient
         .from("child_profiles")
         .update({ adventure_points: newPoints })
         .eq("id", childId);
 
       // Aggiorna anche l'avanzamento delle missioni attive
-      const { data: quests } = await supabase.from("reading_quests").select("*");
+      const { data: quests } = await adminClient.from("reading_quests").select("*");
       if (quests && quests.length > 0) {
         for (const q of quests) {
-          const { data: existingProg } = await supabase
+          const { data: existingProg } = await adminClient
             .from("child_quest_progress")
             .select("*")
             .eq("child_profile_id", childId)
@@ -120,7 +172,7 @@ export async function POST(req: Request) {
           const currentCount = (existingProg?.current_progress || 0) + 1;
           const isCompletedNow = currentCount >= q.target_count && !existingProg?.completed_at;
 
-          await supabase
+          await adminClient
             .from("child_quest_progress")
             .upsert(
               {
@@ -137,7 +189,7 @@ export async function POST(req: Request) {
           // Se completata per la prima volta, assegna anche i punti premio missione
           if (isCompletedNow) {
             const bonus = q.points_reward || 15;
-            await supabase
+            await adminClient
               .from("child_profiles")
               .update({ adventure_points: newPoints + bonus })
               .eq("id", childId);
@@ -157,7 +209,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "cosmeticId mancante" }, { status: 400 });
       }
 
-      const { data: cosmetic } = await supabase
+      const { data: cosmetic } = await adminClient
         .from("cosmetic_items")
         .select("*")
         .eq("id", cosmeticId)
@@ -168,14 +220,14 @@ export async function POST(req: Request) {
       }
 
       // Verifica piano richiesto
-      const { data: childFamData } = await supabase
+      const { data: childFamData } = await adminClient
         .from("child_profiles")
         .select("family_id")
         .eq("id", childId)
         .single();
 
       if (childFamData?.family_id) {
-        const { data: fam } = await supabase
+        const { data: fam } = await adminClient
           .from("families")
           .select("subscription_tier")
           .eq("id", childFamData.family_id)
@@ -187,16 +239,19 @@ export async function POST(req: Request) {
         const currentOrder = tierOrder[tier] ?? 0;
 
         if (currentOrder < requiredOrder) {
-          return NextResponse.json({
-            error: `Questo premio richiede il piano ${cosmetic.requires_plan?.toUpperCase()}`,
-            requiresUpgrade: true,
-            requiredPlan: cosmetic.requires_plan,
-          }, { status: 403 });
+          return NextResponse.json(
+            {
+              error: `Questo premio richiede il piano ${cosmetic.requires_plan?.toUpperCase()}`,
+              requiresUpgrade: true,
+              requiredPlan: cosmetic.requires_plan,
+            },
+            { status: 403 }
+          );
         }
       }
 
       // Verifica se già sbloccato
-      const { data: alreadyUnlocked } = await supabase
+      const { data: alreadyUnlocked } = await adminClient
         .from("child_unlocked_cosmetics")
         .select("id")
         .eq("child_profile_id", childId)
@@ -204,27 +259,33 @@ export async function POST(req: Request) {
         .maybeSingle();
 
       if (alreadyUnlocked) {
-        return NextResponse.json({
-          error: "Hai già sbloccato questo premio!",
-          alreadyUnlocked: true,
-        }, { status: 400 });
+        return NextResponse.json(
+          {
+            error: "Hai già sbloccato questo premio!",
+            alreadyUnlocked: true,
+          },
+          { status: 400 }
+        );
       }
 
       if (currentPoints < cosmetic.cost_points) {
-        return NextResponse.json({
-          error: "Punti Avventura insufficienti per questo premio!",
-          insufficientPoints: true,
-        }, { status: 400 });
+        return NextResponse.json(
+          {
+            error: "Punti Avventura insufficienti per questo premio!",
+            insufficientPoints: true,
+          },
+          { status: 400 }
+        );
       }
 
       const remainingPoints = currentPoints - cosmetic.cost_points;
 
-      await supabase
+      await adminClient
         .from("child_profiles")
         .update({ adventure_points: remainingPoints })
         .eq("id", childId);
 
-      await supabase.from("child_unlocked_cosmetics").insert({
+      await adminClient.from("child_unlocked_cosmetics").insert({
         child_profile_id: childId,
         cosmetic_id: cosmeticId,
       });
@@ -238,7 +299,6 @@ export async function POST(req: Request) {
 
     if (action === "set_active_cosmetic") {
       const { slot, cosmeticId: activeCosmeticId } = body;
-      // slot: 'badge' | 'frame' | null (null = rimuovi)
       if (!slot || !["badge", "frame"].includes(slot)) {
         return NextResponse.json({ error: "slot deve essere 'badge' o 'frame'" }, { status: 400 });
       }
@@ -246,8 +306,7 @@ export async function POST(req: Request) {
       const updateField = slot === "badge" ? "active_badge_id" : "active_frame_id";
 
       if (activeCosmeticId) {
-        // Verifica che il cosmetico sia effettivamente sbloccato da questo bambino
-        const { data: owned } = await supabase
+        const { data: owned } = await adminClient
           .from("child_unlocked_cosmetics")
           .select("id")
           .eq("child_profile_id", childId)
@@ -259,7 +318,7 @@ export async function POST(req: Request) {
         }
       }
 
-      await supabase
+      await adminClient
         .from("child_profiles")
         .update({ [updateField]: activeCosmeticId || null })
         .eq("id", childId);

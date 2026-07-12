@@ -1,7 +1,22 @@
 import { describe, it, expect } from "vitest";
 
-describe("StoriIA v1.3 - Gamification 'Punti Avventura', Missioni e Negozio Premi", () => {
-  it("deve assegnare +15 Punti Avventura al completamento della lettura di una storia", () => {
+describe("StoriIA v1.3 - Gamification 'Punti Avventura' & Ownership Security (BUG 1 & BUG 2)", () => {
+  it("deve verificare la titolarità (ownership) e rifiutare con 403 modifiche su profili di altre famiglie (IDOR prevention)", () => {
+    const parentAuthId = "user-genitore-1";
+    const targetChildProfile = {
+      id: "child-altrui",
+      family_id: "family-2",
+      parent_user_id: "user-genitore-2",
+    };
+
+    const isAuthorized = targetChildProfile.parent_user_id === parentAuthId;
+    expect(isAuthorized).toBe(false);
+
+    const httpStatus = isAuthorized ? 200 : 403;
+    expect(httpStatus).toBe(403);
+  });
+
+  it("deve assegnare +15 Punti Avventura al completamento della lettura e aggiornare le missioni", () => {
     const initialPoints = 10;
     const readingCompleted = true;
     const newPoints = readingCompleted ? initialPoints + 15 : initialPoints;

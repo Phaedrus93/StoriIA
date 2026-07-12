@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import Stripe from "stripe";
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "sk_test_placeholder", {
+  apiVersion: "2026-06-24.dahlia",
+});
 
 export async function DELETE() {
   try {
@@ -22,6 +27,24 @@ export async function DELETE() {
     }
 
     const adminClient = createAdminClient();
+
+    // 0. Leggi la famiglia per recuperare stripe_subscription_id prima della cancellazione DB
+    const { data: family } = await adminClient
+      .from("families")
+      .select("id, stripe_subscription_id")
+      .eq("parent_user_id", user.id)
+      .maybeSingle();
+
+    if (family?.stripe_subscription_id) {
+      try {
+        await stripe.subscriptions.cancel(family.stripe_subscription_id);
+      } catch (stripeErr) {
+        console.error(
+          "[delete-account] Errore cancellazione abbonamento Stripe (procedo con GDPR delete):",
+          stripeErr
+        );
+      }
+    }
 
     // 1. Eliminazione esplicita della famiglia (a cascata elimina child_profiles, stories, characters, settings, audit_logs)
     const { error: famDelErr } = await adminClient

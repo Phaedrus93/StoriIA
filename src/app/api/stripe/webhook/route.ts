@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PLAN_LIMITS, type SubscriptionTier } from "@/lib/config";
 import { notifyFamily } from "@/lib/notifications";
+import { enforceSuspensionOnDowngrade } from "@/lib/billing-utils";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "sk_test_placeholder", {
   apiVersion: "2026-06-24.dahlia",
@@ -27,7 +28,14 @@ export async function POST(req: Request) {
     if (webhookSecret && signature) {
       event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
     } else {
-      // Modalità dev: accetta payload non firmati
+      if (process.env.NODE_ENV === "production") {
+        return NextResponse.json(
+          { error: "Webhook signature mancante in produzione" },
+          { status: 400 }
+        );
+      }
+      // Modalità dev: accetta payload non firmati con log
+      console.warn("[Stripe Webhook] Attenzione: payload non firmato accettato in ambiente non-production");
       event = JSON.parse(rawBody) as Stripe.Event;
     }
   } catch (err) {
@@ -81,9 +89,19 @@ export async function POST(req: Request) {
         } else if (purchaseType === "subscription") {
           const newTier = (session.metadata?.plan_tier || "premium") as SubscriptionTier;
           const monthlyCredits = PLAN_LIMITS[newTier]?.monthlyCredits ?? 0;
+          const customerId = typeof session.customer === "string" ? session.customer : session.customer?.id || null;
+          const subscriptionId = typeof session.subscription === "string" ? session.subscription : session.subscription?.id || null;
+
           await adminClient.from("families")
-            .update({ subscription_tier: newTier, subscription_status: "active" })
+            .update({
+              subscription_tier: newTier,
+              subscription_status: "active",
+              stripe_customer_id: customerId,
+              stripe_subscription_id: subscriptionId,
+            })
             .eq("id", familyId);
+
+          await enforceSuspensionOnDowngrade(adminClient, familyId, newTier);
           if (monthlyCredits > 0) {
             const { data: fam } = await adminClient
               .from("families").select("credits_balance").eq("id", familyId).single();
@@ -197,6 +215,7 @@ export async function POST(req: Request) {
         await adminClient.from("families")
           .update({ subscription_tier: "free", subscription_status: "canceled" })
           .eq("id", familyId);
+        await enforceSuspensionOnDowngrade(adminClient, familyId, "free");
         await notifyFamily({
           familyId,
           category: "billing",

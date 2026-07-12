@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS public.child_profiles (
   name TEXT NOT NULL,
   birth_year INTEGER,
   avatar_preset_id TEXT REFERENCES public.avatar_presets(id) ON DELETE SET NULL,
+  is_suspended BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

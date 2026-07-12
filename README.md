@@ -67,16 +67,20 @@ Fai doppio clic sul file **`avvia-storiia-lan.bat`** presente nella cartella del
 
 ## 🧪 Esecuzione della Suite di Test Automatici
 
-Il progetto include **30 test automatici** divisi in 6 suite che verificano l'isolamento RLS, l'hashing OWASP del PIN, la protezione Lockout anti brute-force e la logica applicativa pre-eliminazione:
+Il progetto include **64 test automatici** divisi in **16 suite** che verificano l'isolamento RLS, l'hashing OWASP del PIN, la protezione Lockout anti brute-force, il sistema crediti/fatturazione Stripe, la moderazione preventiva AI e la gamification:
 
 ```bash
 npm test
 ```
 
-### Elenco Suite di Test Automatiche:
+### Elenco Principali Suite di Test Automatiche:
 - **`src/tests/security-rls.test.ts`**: Verifica delle policy logiche di sicurezza RLS e filtro su `active_child_profile_id`.
 - **`src/tests/pin-security.test.ts`**: Verifica salatura e hashing `scrypt` OWASP del PIN e calcolo sblocco temporale.
 - **`src/tests/security-rls-integration.test.ts`**: Esecuzione reale in motore PostgreSQL in-memory (`PGlite`) per verificare il blocco fisico delle query in modalità bambino e l'isolamento di `family_security`.
 - **`src/tests/library-pre-delete.test.ts`**: Verifica conteggi pre-eliminazione su personaggi e ambientazioni e integrità referenziale `ON DELETE SET NULL`.
 - **`src/tests/story-generation.test.ts`**: Verifica del prompt engineering differenziato per fasce d'età e del Soft Rate Limit di 20 storie giornaliere.
 - **`src/tests/child-mode.test.ts`**: Verifica transizioni verso modalità bambino e protezione Lockout anti brute-force dopo 5 tentativi PIN errati.
+- **`src/tests/v1-gamification.test.ts`**: Verifica di sicurezza IDOR prevention (`403 Forbidden` su profili altrui) e logica Punti Avventura e sblocco cosmetici.
+- **`src/tests/v1-moderation-creation.test.ts`**: Verifica moderazione AI con approccio fail-closed per la creazione sicura di personaggi e ambientazioni.
+- **`src/tests/v1-downgrade-suspension.test.ts`**: Verifica sospensione profili eccedenti al downgrade tier, blocco accesso in modalità bambino e API server-side di riattivazione.
+- **`src/tests/v1-atomic-credits.test.ts`**: Verifica concorrenza e atomicità delle transazioni di consumo e rimborso crediti (`consume_credit` e `refund_credit`).

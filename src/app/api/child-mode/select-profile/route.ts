@@ -57,7 +57,7 @@ export async function POST(req: Request) {
     // Verifica che il profilo bambino appartenga specificamente alla famiglia dell'utente loggato
     const { data: childProfile } = await supabase
       .from("child_profiles")
-      .select("id, name")
+      .select("id, name, is_suspended")
       .eq("id", childProfileId)
       .eq("family_id", family.id)
       .single();
@@ -65,6 +65,16 @@ export async function POST(req: Request) {
     if (!childProfile) {
       return NextResponse.json(
         { error: "Profilo bambino non appartiene alla tua famiglia" },
+        { status: 403 }
+      );
+    }
+
+    if (childProfile.is_suspended) {
+      return NextResponse.json(
+        {
+          error: "Profilo sospeso, effettua l'upgrade o riattivalo dal pannello genitore.",
+          isSuspended: true,
+        },
         { status: 403 }
       );
     }

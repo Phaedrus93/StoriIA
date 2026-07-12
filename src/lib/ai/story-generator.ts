@@ -98,6 +98,66 @@ export function moderateInputContent(input: GenerateStoryInput): { safe: boolean
 }
 
 /**
+ * Moderazione del testo via AI (approccio FAIL-CLOSED)
+ * Utilizza Google Gemini / Safety check prima della creazione di personaggi e ambientazioni.
+ * In caso di errore di rete/servizio/quota, adotta il fail-closed per non autorizzare contenuti non verificati.
+ */
+export async function moderateTextWithAI(text: string): Promise<{
+  safe: boolean;
+  reason?: string;
+  error?: boolean;
+}> {
+  // 1. Controllo di primo livello (veloce e locale)
+  const localCheck = moderateInputContent({
+    ageRange: "4-6",
+    characterName: text,
+    characterTraits: "",
+    settingName: "",
+    settingDescription: "",
+    moralLessonTitle: "",
+    moralLessonDescription: "",
+  });
+
+  if (!localCheck.safe) {
+    return { safe: false, reason: localCheck.reason };
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || apiKey === "placeholder-gemini-key") {
+    // In ambiente offline di test senza chiave reale, si affida alla verifica locale già superata
+    return { safe: true };
+  }
+
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    const prompt = `Analizza il seguente testo destinato a una favola per bambini (personaggio o ambientazione) e rispondi SOLO con la parola "SAFE" se è completamente sicuro ed educativo per un pubblico sotto i 10 anni, oppure "UNSAFE" se contiene o allude a violenza, odio, armi, sangue, molestie, temi per adulti o contenuti inappropriati:\n\nTesto: "${text}"`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+    });
+
+    const outText = (response.text || "").trim().toUpperCase();
+    if (outText.includes("UNSAFE")) {
+      return {
+        safe: false,
+        reason: "Il contenuto non è idoneo per le storie per bambini secondo i filtri di sicurezza.",
+      };
+    }
+    return { safe: true };
+  } catch (err) {
+    // REGOLA FAIL-CLOSED: se il servizio AI fallisce per errore di rete, timeout o quota, blocca con errore di servizio
+    console.error("[moderateTextWithAI] Errore servizio di moderazione:", err);
+    return {
+      safe: false,
+      error: true,
+      reason: "Servizio temporaneamente non disponibile, riprova",
+    };
+  }
+}
+
+
+/**
  * Invoca Google Gemini API (gemini-2.5-flash) con controllo di moderazione preventiva e retry automatico (max 1)
  */
 export async function generateStoryWithGemini(input: GenerateStoryInput): Promise<string> {

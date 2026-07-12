@@ -14,20 +14,6 @@ const PRICE_MAP: Record<string, string | undefined> = {
   credits_25:      process.env.STRIPE_PRICE_CREDITS_25,
 };
 
-/**
- * POST /api/stripe/create-checkout
- * Crea una Stripe Checkout Session e ritorna l'URL di pagamento.
- *
- * Body:
- * {
- *   type: 'subscription' | 'credit_pack' | 'addon_child' | 'narrative_content',
- *   priceKey?: keyof PRICE_MAP,       // es. 'premium_monthly'
- *   priceId?: string,                  // Price ID diretto (per contenuti narrativi)
- *   tier?: string,                     // es. 'premium'
- *   creditsAmount?: number,            // es. 10
- *   contentId?: string,                // ID narrative_content_catalog
- * }
- */
 export async function POST(req: Request) {
   try {
     const supabase = await createClient();
@@ -39,7 +25,7 @@ export async function POST(req: Request) {
 
     const { data: family } = await supabase
       .from("families")
-      .select("id")
+      .select("id, stripe_customer_id")
       .eq("parent_user_id", user.id)
       .single();
 
@@ -52,16 +38,27 @@ export async function POST(req: Request) {
 
     const origin = req.headers.get("origin") || "http://localhost:3000";
 
-    // Risolve il Price ID Stripe
     const resolvedPriceId = directPriceId || (priceKey ? PRICE_MAP[priceKey] : undefined);
 
     if (!resolvedPriceId) {
-      // Se non c'è ancora il Price ID configurato, ritorna mock URL per sandbox
       return NextResponse.json({
         checkoutUrl: null,
         sandboxMode: true,
         message: "Configura le variabili STRIPE_PRICE_* in .env.local per attivare il checkout reale.",
       });
+    }
+
+    let customerId = family.stripe_customer_id;
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: user.email || undefined,
+        metadata: { family_id: family.id },
+      });
+      customerId = customer.id;
+      await supabase
+        .from("families")
+        .update({ stripe_customer_id: customerId })
+        .eq("id", family.id);
     }
 
     const isSubscription = type === "subscription" || type === "addon_child";
@@ -76,6 +73,7 @@ export async function POST(req: Request) {
     if (contentId) metadata.content_id = contentId;
 
     const session = await stripe.checkout.sessions.create({
+      customer: customerId,
       mode: isSubscription ? "subscription" : "payment",
       line_items: [{ price: resolvedPriceId, quantity: 1 }],
       metadata,

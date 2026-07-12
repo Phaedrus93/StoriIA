@@ -120,18 +120,17 @@ export async function POST(req: Request) {
     }
 
     // Scalaggio atomico 1 credito e registrazione su credit_ledger
-    await supabase
-      .from("families")
-      .update({ credits_balance: (family.credits_balance || 0) - 1 })
-      .eq("id", family.id);
-
-    await supabase.from("credit_ledger").insert({
-      family_id: family.id,
-      amount: -1,
-      transaction_type: "GENERATION_SPEND",
-      description: "Generazione storia AI",
-      reference_id: auditLogId || null,
+    const { data: consumed } = await supabase.rpc("consume_credit", {
+      p_family_id: family.id,
+      p_description: "Generazione storia AI",
+      p_reference_id: auditLogId || null,
     });
+    if (consumed !== true) {
+      return NextResponse.json(
+        { error: "Crediti insufficienti o errore transazione." },
+        { status: 403 }
+      );
+    }
     creditDeducted = true;
 
     // 5. Generazione del testo AI con moderazione
@@ -171,17 +170,10 @@ export async function POST(req: Request) {
           .eq("id", auditLogId);
       }
       if (creditDeducted) {
-        await supabase
-          .from("families")
-          .update({ credits_balance: family.credits_balance })
-          .eq("id", family.id);
-
-        await supabase.from("credit_ledger").insert({
-          family_id: family.id,
-          amount: 1,
-          transaction_type: "GENERATION_REFUND",
-          description: "Rimborso automatico per errore salvataggio storia",
-          reference_id: auditLogId || null,
+        await supabase.rpc("refund_credit", {
+          p_family_id: family.id,
+          p_description: "Rimborso automatico per errore salvataggio storia",
+          p_reference_id: auditLogId || null,
         });
       }
       return NextResponse.json(
@@ -201,16 +193,27 @@ export async function POST(req: Request) {
         .eq("id", auditLogId);
     }
 
-    // 8. Assegnazione facoltativa alle storie dei profili figli specificati
+    // 8. Assegnazione facoltativa alle storie dei profili figli specificati (esclusi i profili sospesi)
     if (Array.isArray(assignToChildIds) && assignToChildIds.length > 0) {
-      const assignments = assignToChildIds.map((childId: string) => ({
-        story_id: newStory.id,
-        child_profile_id: childId,
-        reading_status: "new",
-        last_read_position: 0,
-      }));
+      const { data: activeChildProfiles } = await supabase
+        .from("child_profiles")
+        .select("id")
+        .in("id", assignToChildIds)
+        .eq("family_id", family.id)
+        .eq("is_suspended", false);
 
-      await supabase.from("story_assignments").insert(assignments);
+      const validChildIds = (activeChildProfiles || []).map((c) => c.id);
+
+      if (validChildIds.length > 0) {
+        const assignments = validChildIds.map((childId: string) => ({
+          story_id: newStory.id,
+          child_profile_id: childId,
+          reading_status: "new",
+          last_read_position: 0,
+        }));
+
+        await supabase.from("story_assignments").insert(assignments);
+      }
     }
 
     return NextResponse.json({
@@ -236,17 +239,10 @@ export async function POST(req: Request) {
           .eq("parent_user_id", user.id)
           .single();
         if (family) {
-          // Rimborso +1 credito sul saldo
-          await supabase
-            .from("families")
-            .update({ credits_balance: (family.credits_balance || 0) + 1 })
-            .eq("id", family.id);
-
-          await supabase.from("credit_ledger").insert({
-            family_id: family.id,
-            amount: 1,
-            transaction_type: "GENERATION_REFUND",
-            description: `Rimborso automatico per ${isModBlock ? "blocco moderazione" : "errore generazione"}`,
+          // Rimborso atomico +1 credito sul saldo e registrazione su ledger
+          await supabase.rpc("refund_credit", {
+            p_family_id: family.id,
+            p_description: `Rimborso automatico per ${isModBlock ? "blocco moderazione" : "errore generazione"}`,
           });
 
           await supabase.from("generation_audit_logs").insert({

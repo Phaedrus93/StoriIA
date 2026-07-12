@@ -153,12 +153,20 @@ export default function CharactersPage() {
         .eq("id", editingCharId);
       handleCancelEdit();
     } else {
-      await supabase.from("characters").insert({
-        family_id: familyId,
-        owner_child_profile_id: ownerChildId,
-        name: name.trim(),
-        traits: combinedTraits,
+      const res = await fetch("/api/characters", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          traits: combinedTraits,
+        }),
       });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Impossibile creare il personaggio.");
+        setIsCreating(false);
+        return;
+      }
       setName("");
       setSelectedTraits([]);
       setCustomTrait("");
