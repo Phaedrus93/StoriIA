@@ -118,6 +118,31 @@ export default function ManageBillingPage() {
     }
   };
 
+  const handleReactivateSubscription = async () => {
+    if (!confirm("Vuoi riattivare il rinnovo automatico del tuo abbonamento?")) {
+      return;
+    }
+    setActionLoading(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    try {
+      const res = await fetch("/api/billing/reactivate-subscription", {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setErrorMsg(data.error || "Impossibile riattivare l'abbonamento");
+      } else {
+        setSuccessMsg(data.message || "Il rinnovo automatico è stato riattivato con successo.");
+        fetchBillingData();
+      }
+    } catch {
+      setErrorMsg("Errore di rete durante la riattivazione.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
@@ -236,6 +261,17 @@ export default function ManageBillingPage() {
                   Annulla Abbonamento (a fine periodo)
                 </button>
               )}
+
+            {family?.subscription_status === "canceling_at_period_end" && (
+              <button
+                onClick={handleReactivateSubscription}
+                disabled={actionLoading}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 text-sm font-medium border border-emerald-500/30 transition disabled:opacity-50"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                Riattiva Abbonamento
+              </button>
+            )}
           </div>
         </div>
 

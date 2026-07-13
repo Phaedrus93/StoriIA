@@ -6,17 +6,8 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "sk_test_placeholder"
   apiVersion: "2026-06-24.dahlia",
 });
 
-export async function POST(req: Request) {
+export async function POST() {
   try {
-    let body: { reactivate?: boolean } = {};
-    try {
-      body = await req.json();
-    } catch {
-      body = {};
-    }
-
-    const reactivate = Boolean(body.reactivate);
-
     const supabase = await createClient();
     const {
       data: { user },
@@ -39,38 +30,34 @@ export async function POST(req: Request) {
 
     if (family.subscription_tier === "free") {
       return NextResponse.json(
-        { error: "Nessun abbonamento a pagamento attivo da gestire" },
+        { error: "Nessun abbonamento a pagamento attivo da riattivare" },
         { status: 400 }
       );
     }
 
-    // 1. Se presente lo stripe_subscription_id, chiama PRIMA l'API Stripe
+    // 1. Chiama prima Stripe per riattivare il rinnovo automatico
     if (family.stripe_subscription_id) {
       try {
         await stripe.subscriptions.update(family.stripe_subscription_id, {
-          cancel_at_period_end: !reactivate,
+          cancel_at_period_end: false,
         });
       } catch (stripeErr: unknown) {
         const errMessage =
           stripeErr instanceof Error ? stripeErr.message : "Errore API Stripe";
-        // 3. Se la chiamata Stripe fallisce, non aggiornare il database locale
         return NextResponse.json(
           {
-            error: `Impossibile ${
-              reactivate ? "riattivare" : "cancellare"
-            } l'abbonamento su Stripe: ${errMessage}`,
+            error: `Impossibile riattivare l'abbonamento su Stripe: ${errMessage}`,
           },
           { status: 502 }
         );
       }
     }
 
-    // 2. Aggiorna lo stato nel database locale SOLO dopo il successo della chiamata Stripe
-    const newStatus = reactivate ? "active" : "canceling_at_period_end";
+    // 2. Aggiorna lo stato nel database locale SOLO se Stripe ha avuto successo
     const { error: updateErr } = await supabase
       .from("families")
       .update({
-        subscription_status: newStatus,
+        subscription_status: "active",
       })
       .eq("id", family.id);
 
@@ -83,10 +70,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
-      message: reactivate
-        ? "Il rinnovo automatico del tuo abbonamento è stato riattivato con successo."
-        : "L'abbonamento non sarà rinnovato alla scadenza e resterà attivo fino a fine periodo.",
-      status: newStatus,
+      message: "Il rinnovo automatico del tuo abbonamento è stato riattivato con successo.",
+      status: "active",
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Errore interno al server";
