@@ -352,14 +352,20 @@ export default function ChildReaderPage() {
 
       if (status === "completed" && selectedChildId) {
         try {
-          await fetch("/api/child/gamification", {
+          const gamRes = await fetch("/api/child/gamification", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               action: "award_reading_points",
               childId: selectedChildId,
+              storyId: activeStory?.id,
+              assignmentId: activeStory?.assignmentId,
             }),
           });
+          const gamData = await gamRes.json();
+          if (gamData.success && typeof gamData.adventurePoints === "number") {
+            setAdventurePoints(gamData.adventurePoints);
+          }
         } catch {
           // ignora errori di rete sul premio
         }
@@ -720,6 +726,8 @@ export default function ChildReaderPage() {
             <form onSubmit={handleVerifyPinAndExit} className="space-y-4">
               <input
                 type="password"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 required
                 maxLength={6}
                 value={pinInput}

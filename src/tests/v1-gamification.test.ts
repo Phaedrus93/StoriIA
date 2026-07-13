@@ -35,6 +35,7 @@ describe("StoriIA v1.3 - Gamification 'Punti Avventura' & Ownership Security su 
     await pglite.exec(fs.readFileSync(path.resolve(process.cwd(), "sql/01_mvp_schema.sql"), "utf-8"));
     await pglite.exec(fs.readFileSync(path.resolve(process.cwd(), "sql/04_v1_phase2_billing_and_credits.sql"), "utf-8"));
     await pglite.exec(fs.readFileSync(path.resolve(process.cwd(), "sql/05_v1_phase3_gamification.sql"), "utf-8"));
+    await pglite.exec(fs.readFileSync(path.resolve(process.cwd(), "sql/08_v1_gamification_caps_and_idempotency.sql"), "utf-8"));
     await pglite.exec(fs.readFileSync(path.resolve(process.cwd(), "supabase/migrations/20260712000000_v1_unlockable_content.sql"), "utf-8"));
     await pglite.exec(fs.readFileSync(path.resolve(process.cwd(), "supabase/migrations/20260712100000_v1_phase4_notifications.sql"), "utf-8"));
     await pglite.exec(fs.readFileSync(path.resolve(process.cwd(), "supabase/migrations/20260712120000_v1_bugfixes_schema.sql"), "utf-8"));
@@ -227,5 +228,43 @@ describe("StoriIA v1.3 - Gamification 'Punti Avventura' & Ownership Security su 
       SELECT credits_balance FROM public.families WHERE id = '22222222-2222-2222-2222-222222222222'
     `);
     expect(famRes.rows[0].credits_balance).toBe(5);
+  });
+
+  it("deve assegnare punti una sola volta per coppia storia-bambino e rispettare il tetto giornaliero di 2 libri", async () => {
+    const childId = "33333333-3333-3333-3333-333333333333";
+
+    await pglite.exec(`
+      INSERT INTO public.stories (id, family_id, target_age_range, generated_text)
+      VALUES 
+        ('11111111-1111-1111-1111-111111111191', '22222222-2222-2222-2222-222222222222', '4-6', 'Favola 1'),
+        ('11111111-1111-1111-1111-111111111192', '22222222-2222-2222-2222-222222222222', '4-6', 'Favola 2'),
+        ('11111111-1111-1111-1111-111111111193', '22222222-2222-2222-2222-222222222222', '4-6', 'Favola 3')
+      ON CONFLICT DO NOTHING;
+
+      INSERT INTO public.story_assignments (id, story_id, child_profile_id, points_awarded, updated_at)
+      VALUES
+        ('99999999-9999-9999-9999-999999999991', '11111111-1111-1111-1111-111111111191', '${childId}', true, now()),
+        ('99999999-9999-9999-9999-999999999992', '11111111-1111-1111-1111-111111111192', '${childId}', true, now()),
+        ('99999999-9999-9999-9999-999999999993', '11111111-1111-1111-1111-111111111193', '${childId}', false, now())
+      ON CONFLICT DO NOTHING;
+    `);
+
+    // 1. Verifica che tentare di riavere punti sulla Storia 1 già premiata ritorni already_awarded e 0 punti
+    const dupRes = await handleGamificationActionServer(adapter, adminClient, {
+      action: "award_reading_points",
+      childId,
+      assignmentId: "99999999-9999-9999-9999-999999999991",
+    });
+    expect(dupRes.reason).toBe("already_awarded");
+    expect(dupRes.rewardGiven).toBe(0);
+
+    // 2. Verifica che tentare di premiare la Storia 3 lo stesso giorno (avendo già 2 libri oggi) venga bloccata dal tetto giornaliero
+    const capRes = await handleGamificationActionServer(adapter, adminClient, {
+      action: "award_reading_points",
+      childId,
+      assignmentId: "99999999-9999-9999-9999-999999999993",
+    });
+    expect(capRes.reason).toBe("cap_reached");
+    expect(capRes.rewardGiven).toBe(0);
   });
 });

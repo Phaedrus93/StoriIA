@@ -155,4 +155,32 @@ describe("StoriIA v1.2 - Real Stripe Webhook Handler Verification (src/app/api/s
     const json = await res.json();
     expect(json.error).toBeDefined();
   });
+
+  it("deve garantire l'idempotenza se un evento Stripe con lo stesso id è già stato elaborato ('processed')", async () => {
+    singleMock.mockResolvedValueOnce({
+      data: { event_id: "evt_duplicate_123", status: "processed" },
+    });
+
+    const fakeEvent = {
+      id: "evt_duplicate_123",
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: "cs_test_dup",
+          metadata: { family_id: "fam_test_123", purchase_type: "credit_pack", credits_amount: "10" },
+        },
+      },
+    };
+
+    const req = new Request("http://localhost:3000/api/stripe/webhook", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(fakeEvent),
+    });
+
+    const res = await POST(req);
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(json.alreadyProcessed).toBe(true);
+  });
 });

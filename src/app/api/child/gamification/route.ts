@@ -125,7 +125,7 @@ export async function handleGamificationActionServer(
   adminClient: any,
   body: any
 ): Promise<{ success?: boolean; error?: string; status?: number; [k: string]: any }> {
-  const { action, childId, cosmeticId } = body;
+  const { action, childId, cosmeticId, storyId, assignmentId } = body;
 
   if (!childId) {
     return { error: "childId obbligatorio", status: 400 };
@@ -142,62 +142,124 @@ export async function handleGamificationActionServer(
     .eq("id", childId)
     .single();
 
-    if (childErr || !child) {
-      return NextResponse.json({ error: "Profilo bambino non trovato" }, { status: 404 });
+  if (childErr || !child) {
+    return { error: "Profilo bambino non trovato", status: 404 };
+  }
+
+  const currentPoints = child.adventure_points || 0;
+
+  if (action === "award_reading_points") {
+    // 1. Verifica unicità per coppia storia-bambino se forniti storyId o assignmentId
+    if (assignmentId || storyId) {
+      let q = adminClient.from("story_assignments").select("id, points_awarded");
+      if (assignmentId) {
+        q = q.eq("id", assignmentId);
+      } else {
+        q = q.eq("story_id", storyId).eq("child_profile_id", childId);
+      }
+      const { data: assign } = await q.maybeSingle();
+      if (assign && assign.points_awarded === true) {
+        return {
+          success: true,
+          adventurePoints: currentPoints,
+          rewardGiven: 0,
+          reason: "already_awarded",
+          status: 200,
+        };
+      }
     }
 
-    const currentPoints = child.adventure_points || 0;
+    // 2. Verifica i 3 tetti indipendenti sul calendario (giornaliero: max 2, settimanale: max 4, mensile: max 8)
+    const now = new Date();
+    const startOfDayMs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 
-    if (action === "award_reading_points") {
-      const rewardAmount = 15; // +15 Punti Avventura per ogni lettura completata
-      let newPoints = currentPoints + rewardAmount;
+    const dayOfWeek = now.getDay();
+    const diffToMonday = (dayOfWeek + 6) % 7;
+    const startOfWeekMs = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diffToMonday).getTime();
+    const startOfMonthMs = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
 
-      await adminClient
-        .from("child_profiles")
-        .update({ adventure_points: newPoints })
-        .eq("id", childId);
+    const { data: awardedList } = await adminClient
+      .from("story_assignments")
+      .select("id, updated_at")
+      .eq("child_profile_id", childId)
+      .eq("points_awarded", true);
 
-      // Aggiorna anche l'avanzamento delle missioni attive
-      const { data: quests } = await adminClient.from("reading_quests").select("*");
-      if (quests && quests.length > 0) {
-        for (const q of quests) {
-          const { data: existingProg } = await adminClient
-            .from("child_quest_progress")
-            .select("*")
-            .eq("child_profile_id", childId)
-            .eq("quest_id", q.id)
-            .maybeSingle();
+    const countDay = (awardedList || []).filter((a: any) => new Date(a.updated_at).getTime() >= startOfDayMs).length;
+    const countWeek = (awardedList || []).filter((a: any) => new Date(a.updated_at).getTime() >= startOfWeekMs).length;
+    const countMonth = (awardedList || []).filter((a: any) => new Date(a.updated_at).getTime() >= startOfMonthMs).length;
 
-          const currentCount = (existingProg?.current_progress || 0) + 1;
-          const isCompletedNow = currentCount >= q.target_count && !existingProg?.completed_at;
+    if (countDay >= 2 || countWeek >= 4 || countMonth >= 8) {
+      return {
+        success: true,
+        adventurePoints: currentPoints,
+        rewardGiven: 0,
+        reason: "cap_reached",
+        status: 200,
+      };
+    }
 
+    const rewardAmount = 15; // +15 Punti Avventura per ogni lettura completata
+    let newPoints = currentPoints + rewardAmount;
+
+    await adminClient
+      .from("child_profiles")
+      .update({ adventure_points: newPoints })
+      .eq("id", childId);
+
+    // Segna points_awarded = true sulla story_assignment
+    if (assignmentId || storyId) {
+      let qUpdate = adminClient.from("story_assignments").update({
+        points_awarded: true,
+        updated_at: new Date().toISOString(),
+      });
+      if (assignmentId) {
+        qUpdate = qUpdate.eq("id", assignmentId);
+      } else {
+        qUpdate = qUpdate.eq("story_id", storyId).eq("child_profile_id", childId);
+      }
+      await qUpdate;
+    }
+
+    // Aggiorna anche l'avanzamento delle missioni attive
+    const { data: quests } = await adminClient.from("reading_quests").select("*");
+    if (quests && quests.length > 0) {
+      for (const q of quests) {
+        const { data: existingProg } = await adminClient
+          .from("child_quest_progress")
+          .select("*")
+          .eq("child_profile_id", childId)
+          .eq("quest_id", q.id)
+          .maybeSingle();
+
+        const currentCount = (existingProg?.current_progress || 0) + 1;
+        const isCompletedNow = currentCount >= q.target_count && !existingProg?.completed_at;
+
+        await adminClient
+          .from("child_quest_progress")
+          .upsert(
+            {
+              child_profile_id: childId,
+              quest_id: q.id,
+              current_progress: currentCount,
+              completed_at: isCompletedNow
+                ? new Date().toISOString()
+                : existingProg?.completed_at || null,
+            },
+            { onConflict: "child_profile_id,quest_id" }
+          );
+
+        if (isCompletedNow) {
+          const bonus = q.points_reward || 15;
+          newPoints += bonus;
           await adminClient
-            .from("child_quest_progress")
-            .upsert(
-              {
-                child_profile_id: childId,
-                quest_id: q.id,
-                current_progress: currentCount,
-                completed_at: isCompletedNow
-                  ? new Date().toISOString()
-                  : existingProg?.completed_at || null,
-              },
-              { onConflict: "child_profile_id,quest_id" }
-            );
-
-          // Se completata per la prima volta, assegna anche i punti premio missione
-          if (isCompletedNow) {
-            const bonus = q.points_reward || 15;
-            newPoints += bonus;
-            await adminClient
-              .from("child_profiles")
-              .update({ adventure_points: newPoints })
-              .eq("id", childId);
-          }
+            .from("child_profiles")
+            .update({ adventure_points: newPoints })
+            .eq("id", childId);
         }
       }
+    }
 
-      return {
+    return {
         success: true,
         adventurePoints: newPoints,
         rewardGiven: rewardAmount,

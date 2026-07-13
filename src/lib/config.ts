@@ -19,6 +19,11 @@ export const APP_CONFIG = {
     maxPerFamilyPer24Hours: 20,
   },
 
+  // Tetto massimo configurabile di profili add-on acquistabili per famiglia
+  addonChildren: {
+    maxPerFamily: 5,
+  },
+
   // Configurazione Sicurezza e Uscita da Modalità Bambino
   childModeSecurity: {
     maxFailedPinAttempts: 5,

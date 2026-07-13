@@ -239,6 +239,7 @@ export default function ParentLayout({ children }: { children: React.ReactNode }
                 <input
                   type="password"
                   inputMode="numeric"
+                  pattern="[0-9]*"
                   required
                   maxLength={6}
                   placeholder="••••"
@@ -255,6 +256,7 @@ export default function ParentLayout({ children }: { children: React.ReactNode }
                 <input
                   type="password"
                   inputMode="numeric"
+                  pattern="[0-9]*"
                   required
                   maxLength={6}
                   placeholder="••••"

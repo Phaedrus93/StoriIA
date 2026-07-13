@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { PLAN_LIMITS, type SubscriptionTier } from "@/lib/config";
+import { PLAN_LIMITS, APP_CONFIG, type SubscriptionTier } from "@/lib/config";
 import { notifyFamily } from "@/lib/notifications";
 import { enforceSuspensionOnDowngrade } from "@/lib/billing-utils";
 
@@ -64,6 +64,27 @@ export async function POST(req: Request) {
   if (!familyId) {
     return NextResponse.json({ received: true, skipped: "no_family_id" });
   }
+
+  // ─── Controllo Idempotenza PRIMA di processare ─────────────────────────────
+  const { data: existingEvent } = await adminClient
+    .from("stripe_webhook_events")
+    .select("event_id, status")
+    .eq("event_id", event.id)
+    .single();
+
+  if (existingEvent && existingEvent.status === "processed") {
+    return NextResponse.json({ received: true, idempotent: true, alreadyProcessed: true });
+  }
+
+  // Registrazione riga 'received' all'inizio
+  await adminClient.from("stripe_webhook_events").upsert({
+    event_id: event.id,
+    event_type: event.type,
+    family_id: familyId,
+    status: "received",
+    payload: event as unknown as Record<string, unknown>,
+    created_at: new Date().toISOString(),
+  });
 
   try {
     switch (event.type) {
@@ -133,8 +154,15 @@ export async function POST(req: Request) {
         } else if (purchaseType === "addon_child") {
           const { data: fam } = await adminClient
             .from("families").select("addon_children_count").eq("id", familyId).single();
+          const currentAddons = fam?.addon_children_count || 0;
+          if (currentAddons >= APP_CONFIG.addonChildren.maxPerFamily) {
+            return NextResponse.json(
+              { error: `Tetto massimo di profili add-on (${APP_CONFIG.addonChildren.maxPerFamily}) già raggiunto per questa famiglia.` },
+              { status: 400 }
+            );
+          }
           await adminClient.from("families")
-            .update({ addon_children_count: (fam?.addon_children_count || 0) + 1 })
+            .update({ addon_children_count: currentAddons + 1 })
             .eq("id", familyId);
           await notifyFamily({
             familyId,
@@ -238,9 +266,18 @@ export async function POST(req: Request) {
         break;
     }
 
+    await adminClient.from("stripe_webhook_events").update({
+      status: "processed",
+      processed_at: new Date().toISOString(),
+    }).eq("event_id", event.id);
+
     return NextResponse.json({ received: true, type: event.type });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Errore elaborazione webhook";
+    await adminClient.from("stripe_webhook_events").update({
+      status: "failed",
+      error_message: message,
+    }).eq("event_id", event.id);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

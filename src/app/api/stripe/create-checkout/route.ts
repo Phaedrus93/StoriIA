@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@/lib/supabase/server";
+import { APP_CONFIG } from "@/lib/config";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "sk_test_placeholder", {
   apiVersion: "2026-06-24.dahlia",
@@ -25,7 +26,7 @@ export async function POST(req: Request) {
 
     const { data: family } = await supabase
       .from("families")
-      .select("id, stripe_customer_id")
+      .select("id, stripe_customer_id, addon_children_count")
       .eq("parent_user_id", user.id)
       .single();
 
@@ -35,6 +36,16 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const { type, priceKey, priceId: directPriceId, tier, creditsAmount, contentId } = body;
+
+    if (type === "addon_child" || priceKey === "addon_child") {
+      const currentAddons = family.addon_children_count || 0;
+      if (currentAddons >= APP_CONFIG.addonChildren.maxPerFamily) {
+        return NextResponse.json(
+          { error: `Raggiunto il tetto massimo di ${APP_CONFIG.addonChildren.maxPerFamily} profili add-on per famiglia.` },
+          { status: 400 }
+        );
+      }
+    }
 
     const origin = req.headers.get("origin") || "http://localhost:3000";
 

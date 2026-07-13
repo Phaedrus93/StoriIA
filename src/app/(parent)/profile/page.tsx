@@ -449,6 +449,8 @@ export default function ProfilePage() {
                   </label>
                   <input
                     type="password"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     maxLength={6}
                     required
                     value={currentPin}
@@ -464,6 +466,8 @@ export default function ProfilePage() {
                   </label>
                   <input
                     type="password"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     maxLength={6}
                     required
                     value={newPin}
@@ -479,6 +483,8 @@ export default function ProfilePage() {
                   </label>
                   <input
                     type="password"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     maxLength={6}
                     required
                     value={confirmNewPin}

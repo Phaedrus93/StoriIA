@@ -227,9 +227,17 @@ function BillingContent() {
               Gestisci piano, crediti AI e contenuti sbloccabili
             </p>
           </div>
-          <span className="text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 px-3 py-1 rounded-full uppercase tracking-wider">
-            Stripe Sandbox
-          </span>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/billing/manage"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/30 text-xs font-semibold transition"
+            >
+              Gestisci Abbonamento →
+            </Link>
+            <span className="text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 px-3 py-1 rounded-full uppercase tracking-wider">
+              Stripe Sandbox
+            </span>
+          </div>
         </div>
       </div>
 

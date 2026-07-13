@@ -138,3 +138,15 @@
   letter-spacing: 0.03em;
   text-transform: uppercase;
 }
+
+/* Prevenzione doppio-tap zoom su Safari iOS preservando il pinch-to-zoom di accessibilità */
+button,
+a,
+input,
+select,
+textarea,
+[role="button"],
+.btn-primary,
+.btn-secondary {
+  touch-action: manipulation;
+}

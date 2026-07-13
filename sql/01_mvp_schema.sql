@@ -75,20 +75,24 @@ EXECUTE FUNCTION public.set_current_timestamp_updated_at();
 -- 4. Tabella CHARACTERS (Character Builder)
 CREATE TABLE IF NOT EXISTS public.characters (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  owner_child_profile_id UUID NOT NULL REFERENCES public.child_profiles(id) ON DELETE CASCADE,
+  owner_child_profile_id UUID REFERENCES public.child_profiles(id) ON DELETE CASCADE,
   family_id UUID NOT NULL REFERENCES public.families(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   traits TEXT NOT NULL,
+  image_url TEXT NOT NULL DEFAULT '/avatars/fox.svg',
+  is_preset BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- 5. Tabella SETTINGS (Setting Builder - Ambientazioni)
 CREATE TABLE IF NOT EXISTS public.settings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  owner_child_profile_id UUID NOT NULL REFERENCES public.child_profiles(id) ON DELETE CASCADE,
+  owner_child_profile_id UUID REFERENCES public.child_profiles(id) ON DELETE CASCADE,
   family_id UUID NOT NULL REFERENCES public.families(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   description TEXT NOT NULL,
+  image_url TEXT NOT NULL DEFAULT '/settings/forest.svg',
+  is_preset BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -119,6 +123,7 @@ CREATE TABLE IF NOT EXISTS public.story_assignments (
   child_profile_id UUID NOT NULL REFERENCES public.child_profiles(id) ON DELETE CASCADE,
   reading_status TEXT NOT NULL DEFAULT 'new' CHECK (reading_status IN ('new', 'in_progress', 'completed')),
   last_read_position INTEGER NOT NULL DEFAULT 0 CHECK (last_read_position >= 0 AND last_read_position <= 100),
+  points_awarded BOOLEAN NOT NULL DEFAULT false,
   assigned_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(story_id, child_profile_id)
