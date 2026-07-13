@@ -51,7 +51,7 @@ vi.mock("@/lib/supabase/server", () => ({
   }),
 }));
 
-describe("StoriIA — Verifica Cancellazione e Riattivazione Abbonamento Stripe & DB Locale", () => {
+describe("StoriIA — Verifica Cancellazione e Riattivazione Abbonamento Stripe & DB Locale (Responsabilità Separatas)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     fakeFamilyData = {
@@ -62,50 +62,36 @@ describe("StoriIA — Verifica Cancellazione e Riattivazione Abbonamento Stripe 
     };
   });
 
-  it("deve chiamare stripe.subscriptions.update con cancel_at_period_end: true e poi aggiornare subscription_status sul DB locale", async () => {
-    const req = new Request("http://localhost/api/billing/cancel-subscription", {
-      method: "POST",
-      body: JSON.stringify({}),
-    });
-
-    const res = await cancelSubscriptionPOST(req);
+  it("deve chiamare stripe.subscriptions.update con cancel_at_period_end: true tramite /api/billing/cancel-subscription", async () => {
+    const res = await cancelSubscriptionPOST();
     const data = await res.json();
 
     expect(res.status).toBe(200);
     expect(data.success).toBe(true);
     expect(data.status).toBe("canceling_at_period_end");
 
-    // Verifica che l'API Stripe sia stata chiamata davvero con cancel_at_period_end: true
     expect(subscriptionsUpdateMock).toHaveBeenCalledTimes(1);
     expect(subscriptionsUpdateMock).toHaveBeenCalledWith("sub_stripe_abc123", {
       cancel_at_period_end: true,
     });
 
-    // Verifica che l'aggiornamento DB locale sia avvenuto
     expect(updateMock).toHaveBeenCalledWith({
       subscription_status: "canceling_at_period_end",
     });
   });
 
-  it("NON deve aggiornare il DB locale se la chiamata a Stripe fallisce", async () => {
+  it("NON deve aggiornare il DB locale se la chiamata di cancellazione a Stripe fallisce", async () => {
     subscriptionsUpdateMock.mockRejectedValueOnce(new Error("Stripe network error"));
 
-    const req = new Request("http://localhost/api/billing/cancel-subscription", {
-      method: "POST",
-      body: JSON.stringify({}),
-    });
-
-    const res = await cancelSubscriptionPOST(req);
+    const res = await cancelSubscriptionPOST();
     const data = await res.json();
 
     expect(res.status).toBe(502);
     expect(data.error).toContain("Impossibile cancellare l'abbonamento su Stripe");
-
-    // Verifica che updateMock del DB NON sia stato chiamato dopo il fallimento di Stripe
     expect(updateMock).not.toHaveBeenCalled();
   });
 
-  it("deve permettere di riattivare l'abbonamento chiamando stripe.subscriptions.update con cancel_at_period_end: false", async () => {
+  it("deve permettere di riattivare l'abbonamento tramite il suo endpoint dedicato /api/billing/reactivate-subscription (cancel_at_period_end: false)", async () => {
     fakeFamilyData.subscription_status = "canceling_at_period_end";
 
     const res = await reactivateSubscriptionPOST();
@@ -115,12 +101,10 @@ describe("StoriIA — Verifica Cancellazione e Riattivazione Abbonamento Stripe 
     expect(data.success).toBe(true);
     expect(data.status).toBe("active");
 
-    // Verifica che Stripe sia stato chiamato per disattivare la cancellazione
     expect(subscriptionsUpdateMock).toHaveBeenCalledWith("sub_stripe_abc123", {
       cancel_at_period_end: false,
     });
 
-    // Verifica che il DB locale sia tornato 'active'
     expect(updateMock).toHaveBeenCalledWith({
       subscription_status: "active",
     });
