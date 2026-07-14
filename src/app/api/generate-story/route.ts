@@ -5,6 +5,7 @@ import {
   generateStoryWithGemini,
   type AgeRange,
 } from "@/lib/ai/story-generator";
+import { notifyFamily } from "@/lib/notifications";
 
 export async function POST(req: Request) {
   try {
@@ -176,6 +177,12 @@ export async function POST(req: Request) {
           p_reference_id: auditLogId || null,
         });
       }
+      await notifyFamily({
+        familyId: family.id,
+        category: "activity",
+        title: "Errore salvataggio storia ⚠️",
+        message: "Si è verificato un errore durante il salvataggio della storia. Il credito è stato rimborsato.",
+      });
       return NextResponse.json(
         { error: "Errore durante il salvataggio della storia nel database." },
         { status: 500 }
@@ -216,6 +223,14 @@ export async function POST(req: Request) {
       }
     }
 
+    await notifyFamily({
+      familyId: family.id,
+      category: "activity",
+      title: "Nuova storia generata! ✨",
+      message: `La storia "${newStory.title || characterName || "Avventura Magica"}" è pronta da leggere e ascoltare nella libreria.`,
+      actionLink: `/read?storyId=${newStory.id}`,
+    });
+
     return NextResponse.json({
       success: true,
       story: newStory,
@@ -250,6 +265,15 @@ export async function POST(req: Request) {
             status: isModBlock ? "MODERATION_BLOCKED" : "ERROR",
             error_reason: message,
             completed_at: new Date().toISOString(),
+          });
+
+          await notifyFamily({
+            familyId: family.id,
+            category: "activity",
+            title: isModBlock ? "Generazione bloccata dai filtri 🛡️" : "Errore generazione storia ⚠️",
+            message: isModBlock
+              ? "Il contenuto richiesto non ha superato i filtri di sicurezza per bambini. Il credito è stato rimborsato automaticamente."
+              : "Si è verificato un problema tecnico durante la generazione della storia. Il credito AI è stato rimborsato.",
           });
         }
       }

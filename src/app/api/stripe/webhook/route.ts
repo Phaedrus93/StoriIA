@@ -199,19 +199,32 @@ export async function POST(req: Request) {
         if (invoice.billing_reason === "subscription_cycle") {
           const { data: fam } = await adminClient
             .from("families")
-            .select("credits_balance, subscription_tier")
+            .select("credits_balance, subscription_tier, addon_children_count, pending_addon_children_count")
             .eq("id", familyId)
             .single();
           if (fam) {
             const tier = (fam.subscription_tier || "free") as SubscriptionTier;
             const monthlyCredits = PLAN_LIMITS[tier]?.monthlyCredits ?? 0;
+            const updates: Record<string, any> = {
+              subscription_status: "active",
+            };
             if (monthlyCredits > 0) {
-              await adminClient.from("families")
-                .update({
-                  credits_balance: (fam.credits_balance || 0) + monthlyCredits,
-                  subscription_status: "active",
-                })
-                .eq("id", familyId);
+              updates.credits_balance = (fam.credits_balance || 0) + monthlyCredits;
+            }
+            if (fam.pending_addon_children_count !== null && fam.pending_addon_children_count !== undefined) {
+              updates.addon_children_count = fam.pending_addon_children_count;
+              updates.pending_addon_children_count = null;
+            }
+
+            await adminClient.from("families")
+              .update(updates)
+              .eq("id", familyId);
+
+            if (fam.pending_addon_children_count !== null && fam.pending_addon_children_count !== undefined) {
+              await enforceSuspensionOnDowngrade(adminClient, familyId, tier);
+            }
+
+            if (monthlyCredits > 0) {
               await adminClient.from("credit_ledger").insert({
                 family_id: familyId,
                 amount: monthlyCredits,

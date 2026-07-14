@@ -180,9 +180,7 @@ export default function SettingsPage() {
     if (decision.requiresExplicitConfirmation) {
       setDeleteCandidate({ id: item.id, name: item.name, storyCount: decision.storyCount });
     } else {
-      if (confirm(`Vuoi eliminare l'ambientazione "${item.name}"?`)) {
-        await executeDelete(item.id);
-      }
+      setDeleteCandidate({ id: item.id, name: item.name, storyCount: 0 });
     }
   };
 
@@ -399,14 +397,18 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Modale di conferma consapevole pre-eliminazione per entità in uso */}
+      {/* Modale di conferma eliminazione ambientazione */}
       {deleteCandidate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className="max-w-md w-full glass-card p-6 border-amber-500/40 space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-amber-400 font-bold">
                 <AlertTriangle className="w-5 h-5" />
-                <span>Attenzione: Ambientazione in Uso</span>
+                <span>
+                  {deleteCandidate.storyCount > 0
+                    ? "Attenzione: Ambientazione in Uso"
+                    : "Conferma Eliminazione"}
+                </span>
               </div>
               <button
                 onClick={() => setDeleteCandidate(null)}
@@ -417,9 +419,17 @@ export default function SettingsPage() {
             </div>
 
             <p className="text-sm text-slate-300 leading-relaxed">
-              L&apos;ambientazione <strong className="text-white">&quot;{deleteCandidate.name}&quot;</strong> è
-              attualmente associata a <strong className="text-amber-300">{deleteCandidate.storyCount} storie AI generate</strong>.
-              Se procedi all&apos;eliminazione, le storie resteranno archiviate ma il riferimento a questa ambientazione verrà rimosso.
+              {deleteCandidate.storyCount > 0 ? (
+                <>
+                  L&apos;ambientazione <strong className="text-white">&quot;{deleteCandidate.name}&quot;</strong> è
+                  attualmente associata a <strong className="text-amber-300">{deleteCandidate.storyCount} storie AI generate</strong>.
+                  Se procedi all&apos;eliminazione, le storie resteranno archiviate ma il riferimento a questa ambientazione verrà rimosso.
+                </>
+              ) : (
+                <>
+                  Sei sicuro di voler eliminare l&apos;ambientazione <strong className="text-white">&quot;{deleteCandidate.name}&quot;</strong> dalla tua libreria?
+                </>
+              )}
             </p>
 
             <div className="flex items-center justify-end gap-3 pt-2">

@@ -584,7 +584,7 @@ export default function ProfilePage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
                     Indirizzo di Fatturazione
@@ -593,19 +593,31 @@ export default function ProfilePage() {
                     type="text"
                     value={billingAddress}
                     onChange={(e) => setBillingAddress(e.target.value)}
-                    placeholder="Via/Piazza..."
+                    placeholder="Via/Piazza, civico..."
                     className="input-field"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                    CAP & Città
+                    CAP
+                  </label>
+                  <input
+                    type="text"
+                    value={postalCode}
+                    onChange={(e) => setPostalCode(e.target.value)}
+                    placeholder="es. 00100"
+                    className="input-field font-mono text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                    Città
                   </label>
                   <input
                     type="text"
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
-                    placeholder="es. 00100 Roma"
+                    placeholder="es. Roma"
                     className="input-field"
                   />
                 </div>

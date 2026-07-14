@@ -188,9 +188,7 @@ export default function CharactersPage() {
     if (decision.requiresExplicitConfirmation) {
       setDeleteCandidate({ id: char.id, name: char.name, storyCount: decision.storyCount });
     } else {
-      if (confirm(`Vuoi eliminare il personaggio "${char.name}"?`)) {
-        await executeDelete(char.id);
-      }
+      setDeleteCandidate({ id: char.id, name: char.name, storyCount: 0 });
     }
   };
 
@@ -423,14 +421,18 @@ export default function CharactersPage() {
         </div>
       </div>
 
-      {/* Modale di conferma consapevole pre-eliminazione per entità in uso */}
+      {/* Modale di conferma eliminazione personaggio */}
       {deleteCandidate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className="max-w-md w-full glass-card p-6 border-amber-500/40 space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-amber-400 font-bold">
                 <AlertTriangle className="w-5 h-5" />
-                <span>Attenzione: Personaggio in Uso</span>
+                <span>
+                  {deleteCandidate.storyCount > 0
+                    ? "Attenzione: Personaggio in Uso"
+                    : "Conferma Eliminazione"}
+                </span>
               </div>
               <button
                 onClick={() => setDeleteCandidate(null)}
@@ -441,9 +443,17 @@ export default function CharactersPage() {
             </div>
 
             <p className="text-sm text-slate-300 leading-relaxed">
-              Il personaggio <strong className="text-white">&quot;{deleteCandidate.name}&quot;</strong> è
-              attualmente associato a <strong className="text-amber-300">{deleteCandidate.storyCount} storie AI generate</strong>.
-              Se lo elimini, le storie rimarranno archiviate ma il riferimento al personaggio verrà rimosso.
+              {deleteCandidate.storyCount > 0 ? (
+                <>
+                  Il personaggio <strong className="text-white">&quot;{deleteCandidate.name}&quot;</strong> è
+                  attualmente associato a <strong className="text-amber-300">{deleteCandidate.storyCount} storie AI generate</strong>.
+                  Se lo elimini, le storie rimarranno archiviate ma il riferimento al personaggio verrà rimosso.
+                </>
+              ) : (
+                <>
+                  Sei sicuro di voler eliminare il personaggio <strong className="text-white">&quot;{deleteCandidate.name}&quot;</strong> dalla tua libreria?
+                </>
+              )}
             </p>
 
             <div className="flex items-center justify-end gap-3 pt-2">

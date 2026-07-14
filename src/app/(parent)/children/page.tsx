@@ -18,6 +18,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { getAvatarUrl } from "@/lib/avatars";
+import ConfirmationModal from "@/components/ConfirmationModal";
 
 interface ChildProfile {
   id: string;
@@ -31,6 +32,10 @@ export default function ChildrenPage() {
   const [children, setChildren] = useState<ChildProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [familyId, setFamilyId] = useState<string | null>(null);
+
+  // Stato per la modale di conferma eliminazione
+  const [deleteChildId, setDeleteChildId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Limiti piano
   const [canAddChild, setCanAddChild] = useState<boolean>(true);
@@ -178,10 +183,19 @@ export default function ChildrenPage() {
     }
   };
 
-  const handleDeleteChild = async (id: string) => {
-    if (!confirm("Sei sicuro di voler eliminare questo profilo?")) return;
-    await supabase.from("child_profiles").delete().eq("id", id);
-    loadChildren();
+  const executeDeleteChild = async (id: string) => {
+    setDeleting(true);
+    try {
+      await supabase.from("child_profiles").delete().eq("id", id);
+      loadChildren();
+    } finally {
+      setDeleting(false);
+      setDeleteChildId(null);
+    }
+  };
+
+  const handleDeleteChild = (id: string) => {
+    setDeleteChildId(id);
   };
 
   return (
@@ -404,6 +418,17 @@ export default function ChildrenPage() {
           )}
         </div>
       </div>
+
+      <ConfirmationModal
+        isOpen={Boolean(deleteChildId)}
+        title="Conferma Eliminazione Profilo"
+        message="Sei sicuro di voler eliminare definitivamente questo profilo bambino e tutte le sue impostazioni?"
+        confirmLabel="Elimina Profilo"
+        variant="danger"
+        isLoading={deleting}
+        onConfirm={() => deleteChildId && executeDeleteChild(deleteChildId)}
+        onClose={() => setDeleteChildId(null)}
+      />
     </div>
   );
 }

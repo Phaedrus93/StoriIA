@@ -14,7 +14,7 @@ export async function GET() {
 
     const { data: family, error: famErr } = await supabase
       .from("families")
-      .select("id, subscription_tier, subscription_status, credits_balance")
+      .select("id, subscription_tier, subscription_status, credits_balance, addon_children_count, pending_addon_children_count, stripe_subscription_id, parent_user_id")
       .eq("parent_user_id", user.id)
       .single();
 
@@ -33,10 +33,18 @@ export async function GET() {
       .limit(10);
 
     return NextResponse.json({
+      family,
       tier: family.subscription_tier || "free",
       status: family.subscription_status || "active",
       creditsBalance: family.credits_balance || 0,
+      addonCount: family.addon_children_count || 0,
+      pendingAddonCount: family.pending_addon_children_count ?? null,
+      stripeSubscriptionId: family.stripe_subscription_id || null,
       ledger: ledger || [],
+    }, {
+      headers: {
+        "Cache-Control": "no-store, max-age=0",
+      },
     });
   } catch (err: unknown) {
     const message =

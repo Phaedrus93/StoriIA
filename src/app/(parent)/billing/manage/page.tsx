@@ -12,7 +12,10 @@ import {
   AlertTriangle,
   CheckCircle2,
   Sparkles,
+  Users,
+  MinusCircle,
 } from "lucide-react";
+import ConfirmationModal from "@/components/ConfirmationModal";
 
 interface BillingSummary {
   id: string;
@@ -20,6 +23,8 @@ interface BillingSummary {
   subscription_status: string;
   credits_balance: number;
   addon_children_count: number;
+  pending_addon_children_count?: number | null;
+  stripe_subscription_id?: string | null;
 }
 
 interface LedgerEntry {
@@ -38,6 +43,21 @@ export default function ManageBillingPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalConfig, setModalConfig] = useState<{
+    title: string;
+    message: string;
+    confirmLabel: string;
+    variant: "danger" | "warning" | "info";
+    onConfirm: () => Promise<void>;
+  }>({
+    title: "",
+    message: "",
+    confirmLabel: "Conferma",
+    variant: "warning",
+    onConfirm: async () => {},
+  });
+
   useEffect(() => {
     fetchBillingData();
   }, []);
@@ -46,15 +66,27 @@ export default function ManageBillingPage() {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const res = await fetch("/api/family/check-child-limit");
-      if (res.ok) {
-        const data = await res.json();
-        if (data.family) {
-          setFamily(data.family);
+      const statusRes = await fetch("/api/family/billing-status", { cache: "no-store" });
+      if (statusRes.ok) {
+        const statusData = await statusRes.json();
+        if (statusData.family) {
+          setFamily(statusData.family);
+        } else {
+          setFamily({
+            id: "",
+            subscription_tier: statusData.tier || "free",
+            subscription_status: statusData.status || "active",
+            credits_balance: statusData.creditsBalance || 0,
+            addon_children_count: statusData.addonCount || 0,
+            pending_addon_children_count: statusData.pendingAddonCount ?? null,
+            stripe_subscription_id: statusData.stripeSubscriptionId || null,
+          });
+        }
+        if (statusData.ledger) {
+          setLedger(statusData.ledger);
         }
       }
-      // Caricamento storico transazioni
-      const ledgerRes = await fetch("/api/billing/ledger");
+      const ledgerRes = await fetch("/api/billing/ledger", { cache: "no-store" });
       if (ledgerRes.ok) {
         const ledgerData = await ledgerRes.json();
         setLedger(ledgerData.entries || []);
@@ -66,10 +98,7 @@ export default function ManageBillingPage() {
     }
   };
 
-  const handleDowngrade = async (targetTier: "free" | "premium") => {
-    if (!confirm(`Sei sicuro di voler effettuare il downgrade al piano ${targetTier.toUpperCase()}?`)) {
-      return;
-    }
+  const executeDowngrade = async (targetTier: "free" | "premium") => {
     setActionLoading(true);
     setErrorMsg(null);
     setSuccessMsg(null);
@@ -90,13 +119,22 @@ export default function ManageBillingPage() {
       setErrorMsg("Errore di connessione durante il downgrade.");
     } finally {
       setActionLoading(false);
+      setModalOpen(false);
     }
   };
 
-  const handleCancelSubscription = async () => {
-    if (!confirm("Sei sicuro di voler disdire il rinnovo automatico? L'abbonamento resterà comunque attivo fino a fine periodo.")) {
-      return;
-    }
+  const handleDowngrade = (targetTier: "free" | "premium") => {
+    setModalConfig({
+      title: "Conferma Downgrade Piano",
+      message: `Sei sicuro di voler effettuare il downgrade al piano ${targetTier.toUpperCase()}?\nSe il nuovo piano supporta meno profili bambino, quelli in eccedenza verranno temporaneamente disattivati.`,
+      confirmLabel: `Conferma Downgrade a ${targetTier.toUpperCase()}`,
+      variant: "warning",
+      onConfirm: () => executeDowngrade(targetTier),
+    });
+    setModalOpen(true);
+  };
+
+  const executeCancelSubscription = async () => {
     setActionLoading(true);
     setErrorMsg(null);
     setSuccessMsg(null);
@@ -115,13 +153,22 @@ export default function ManageBillingPage() {
       setErrorMsg("Errore di rete durante la disdetta.");
     } finally {
       setActionLoading(false);
+      setModalOpen(false);
     }
   };
 
-  const handleReactivateSubscription = async () => {
-    if (!confirm("Vuoi riattivare il rinnovo automatico del tuo abbonamento?")) {
-      return;
-    }
+  const handleCancelSubscription = () => {
+    setModalConfig({
+      title: "Disdetta Rinnovo Automatico",
+      message: "Sei sicuro di voler disdire il rinnovo automatico? L'abbonamento e i tuoi crediti resteranno pienamente attivi fino a fine periodo, dopodiché passerai al piano Free.",
+      confirmLabel: "Conferma Disdetta",
+      variant: "danger",
+      onConfirm: executeCancelSubscription,
+    });
+    setModalOpen(true);
+  };
+
+  const executeReactivateSubscription = async () => {
     setActionLoading(true);
     setErrorMsg(null);
     setSuccessMsg(null);
@@ -140,7 +187,55 @@ export default function ManageBillingPage() {
       setErrorMsg("Errore di rete durante la riattivazione.");
     } finally {
       setActionLoading(false);
+      setModalOpen(false);
     }
+  };
+
+  const handleReactivateSubscription = () => {
+    setModalConfig({
+      title: "Riattivazione Abbonamento",
+      message: "Vuoi riattivare il rinnovo automatico del tuo abbonamento per continuare senza interruzioni?",
+      confirmLabel: "Conferma Riattivazione",
+      variant: "info",
+      onConfirm: executeReactivateSubscription,
+    });
+    setModalOpen(true);
+  };
+
+  const executeReduceAddon = async (targetCount: number) => {
+    setActionLoading(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    try {
+      const res = await fetch("/api/billing/reduce-addon", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetAddonCount: targetCount }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setErrorMsg(data.error || "Impossibile pianificare la riduzione degli add-on");
+      } else {
+        setSuccessMsg(data.message || `Riduzione pianificata a ${targetCount} add-on al prossimo rinnovo.`);
+        fetchBillingData();
+      }
+    } catch {
+      setErrorMsg("Errore di connessione durante la riduzione add-on.");
+    } finally {
+      setActionLoading(false);
+      setModalOpen(false);
+    }
+  };
+
+  const handleReduceAddon = (targetCount: number) => {
+    setModalConfig({
+      title: "Riduzione Add-On Profili",
+      message: `Vuoi pianificare la riduzione a ${targetCount} add-on profili bambino?\nLa modifica avrà effetto dal prossimo rinnovo della fattura, senza addebiti immediati.`,
+      confirmLabel: `Riduci a ${targetCount} add-on`,
+      variant: "warning",
+      onConfirm: () => executeReduceAddon(targetCount),
+    });
+    setModalOpen(true);
   };
 
   if (loading) {
@@ -151,31 +246,40 @@ export default function ManageBillingPage() {
     );
   }
 
+  const currentAddons = family?.addon_children_count || 0;
+  const pendingAddons = family?.pending_addon_children_count;
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white p-6 md:p-10">
+    <div className="min-h-screen bg-slate-950 text-white p-6 md:p-12">
+      <ConfirmationModal
+        isOpen={modalOpen}
+        title={modalConfig.title}
+        message={modalConfig.message}
+        confirmLabel={modalConfig.confirmLabel}
+        variant={modalConfig.variant}
+        isLoading={actionLoading}
+        onConfirm={modalConfig.onConfirm}
+        onClose={() => setModalOpen(false)}
+      />
+
       <div className="max-w-4xl mx-auto space-y-8">
-        {/* Navigazione Back */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
           <Link
             href="/billing"
-            className="inline-flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-sm font-medium"
+            className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-400 hover:text-white transition"
           >
-            <ArrowLeft className="h-4 w-4" />
-            Torna a Piani & Ricariche
+            <ArrowLeft className="h-5 w-5" />
           </Link>
+          <div>
+            <h1 className="text-3xl font-extrabold tracking-tight">
+              Gestione Abbonamento & Piano
+            </h1>
+            <p className="text-sm text-slate-400 mt-1">
+              Pianifica modifiche, gestisci i tuoi profili aggiuntivi e controlla il rinnovo.
+            </p>
+          </div>
         </div>
 
-        {/* Header */}
-        <div>
-          <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-white via-indigo-200 to-indigo-400 bg-clip-text text-transparent">
-            Gestione Abbonamento
-          </h1>
-          <p className="text-slate-400 mt-1 text-sm">
-            Amministra il tuo piano attivo, modifica il tier o consulta lo storico delle transazioni e dei crediti.
-          </p>
-        </div>
-
-        {/* Banner Messaggi */}
         {errorMsg && (
           <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 flex items-center gap-3">
             <AlertTriangle className="h-5 w-5 flex-shrink-0 text-rose-400" />
@@ -226,6 +330,39 @@ export default function ManageBillingPage() {
             </div>
           </div>
 
+          {/* Add-on Profili */}
+          {currentAddons > 0 && (
+            <div className="p-4 rounded-xl bg-slate-800/40 border border-slate-700/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <Users className="h-5 w-5 text-indigo-400" />
+                <div>
+                  <div className="text-sm font-bold text-white">
+                    Add-on Profili Bambino Attivi: {currentAddons}
+                  </div>
+                  {pendingAddons !== null && pendingAddons !== undefined ? (
+                    <div className="text-xs text-amber-300 font-semibold mt-0.5">
+                      da: {currentAddons}, a partire dal prossimo rinnovo: {pendingAddons}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-slate-400 mt-0.5">
+                      Estensione per aggiungere più bambini al tuo account.
+                    </div>
+                  )}
+                </div>
+              </div>
+              {(pendingAddons === null || pendingAddons === undefined || pendingAddons > 0) && currentAddons > 0 && (
+                <button
+                  onClick={() => handleReduceAddon(Math.max(0, (pendingAddons ?? currentAddons) - 1))}
+                  disabled={actionLoading}
+                  className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition"
+                >
+                  <MinusCircle className="h-4 w-4 text-amber-400" />
+                  Riduci di 1 Add-on (dal rinnovo)
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Azioni del Piano */}
           <div className="pt-4 border-t border-slate-800 flex flex-wrap items-center gap-3">
             {family?.subscription_tier === "family" && (
@@ -251,7 +388,8 @@ export default function ManageBillingPage() {
             )}
 
             {family?.subscription_tier !== "free" &&
-              family?.subscription_status !== "canceling_at_period_end" && (
+              Boolean(family?.stripe_subscription_id) &&
+              ["active", "trialing"].includes(family?.subscription_status || "") && (
                 <button
                   onClick={handleCancelSubscription}
                   disabled={actionLoading}
