@@ -18,7 +18,7 @@ export async function downgradeFamilyTierServer(
   adminClient: any,
   userId: string,
   newTier: string
-): Promise<{ success?: boolean; error?: string; status?: number; suspendedCount?: number }> {
+): Promise<{ success?: boolean; error?: string; status?: number; suspendedCount?: number; tier?: string; newTier?: string }> {
   const TIER_RANK: Record<string, number> = {
     free: 1,
     premium: 2,
@@ -51,6 +51,13 @@ export async function downgradeFamilyTierServer(
     };
   }
 
+  if (newRank === currentRank) {
+    return {
+      error: "Il downgrade richiede la selezione di un piano inferiore a quello attuale.",
+      status: 400,
+    };
+  }
+
   await adminClient
     .from("families")
     .update({ subscription_tier: newTier as SubscriptionTier })
@@ -62,7 +69,7 @@ export async function downgradeFamilyTierServer(
     newTier as SubscriptionTier
   );
 
-  return { success: true, suspendedCount, status: 200 };
+  return { success: true, suspendedCount, tier: newTier, newTier, status: 200 };
 }
 
 export async function POST(req: Request) {
@@ -83,7 +90,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const { newTier } = await req.json();
+    const body = await req.json();
+    const newTier = body.newTier || body.targetTier;
     const adminClient = createAdminClient();
     const res = await downgradeFamilyTierServer(adminClient, user.id, newTier);
 

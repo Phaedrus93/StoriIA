@@ -106,7 +106,7 @@ export default function ManageBillingPage() {
       const res = await fetch("/api/family/downgrade-tier", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetTier }),
+        body: JSON.stringify({ targetTier, newTier: targetTier }),
       });
       const data = await res.json();
       if (!res.ok) {

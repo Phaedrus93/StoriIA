@@ -5,16 +5,20 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Sparkles, ShieldAlert, ArrowLeft, CheckCircle2 } from "lucide-react";
 import { getAvatarUrl } from "@/lib/avatars";
+import { ChildAvatarWithBadge } from "@/components/ChildAvatarWithBadge";
 
 interface ChildProfile {
   id: string;
   name: string;
   birth_year: number;
   avatar_preset_id: string | null;
+  active_badge_id?: string | null;
+  active_frame_id?: string | null;
 }
 
 export default function ChildSelectPage() {
   const [children, setChildren] = useState<ChildProfile[]>([]);
+  const [cosmeticsMap, setCosmeticsMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [selectingId, setSelectingId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -28,11 +32,21 @@ export default function ChildSelectPage() {
 
   async function loadChildren() {
     setLoading(true);
-    const { data } = await supabase
-      .from("child_profiles")
-      .select("id, name, birth_year, avatar_preset_id")
-      .order("created_at", { ascending: true });
+    const [{ data }, { data: cosmData }] = await Promise.all([
+      supabase
+        .from("child_profiles")
+        .select("id, name, birth_year, avatar_preset_id, active_badge_id, active_frame_id")
+        .order("created_at", { ascending: true }),
+      supabase.from("cosmetic_items").select("id, icon_preset"),
+    ]);
 
+    const map: Record<string, string> = {};
+    if (cosmData) {
+      cosmData.forEach((c: any) => {
+        map[c.id] = c.icon_preset;
+      });
+    }
+    setCosmeticsMap(map);
     setChildren(data || []);
     setLoading(false);
   }
@@ -135,10 +149,14 @@ export default function ChildSelectPage() {
                   }`}
                 >
                   <div className="space-y-4">
-                    <img
-                      src={getAvatarUrl(child.avatar_preset_id)}
-                      alt={child.name}
-                      className="w-16 h-16 rounded-2xl bg-slate-900/80 border border-indigo-500/30 p-1.5 object-contain group-hover:scale-110 transition-transform"
+                    <ChildAvatarWithBadge
+                      name={child.name}
+                      avatarPresetId={child.avatar_preset_id}
+                      activeBadgeId={child.active_badge_id}
+                      activeFrameId={child.active_frame_id}
+                      cosmeticsMap={cosmeticsMap}
+                      size="lg"
+                      className="group-hover:scale-110 transition-transform"
                     />
                     <div>
                       <h2 className="text-xl font-bold text-white group-hover:text-indigo-300 transition-colors">

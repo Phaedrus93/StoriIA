@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { paginateText } from "@/lib/reader/paginator";
 import { getAvatarUrl } from "@/lib/avatars";
+import { ChildAvatarWithBadge, getCosmeticIcon } from "@/components/ChildAvatarWithBadge";
 import GamificationModal from "./components/GamificationModal";
 
 interface ChildProfile {
@@ -461,17 +462,23 @@ export default function ChildReaderPage() {
       {/* Intestazione Bambino Esclusiva */}
       <div className="flex flex-col md:flex-row items-center justify-between gap-4 glass-card p-5 border-emerald-500/30">
         <div className="flex items-center gap-3">
-          <div className={`relative shrink-0 ${activeFrameId ? 'ring-2 ring-amber-400 ring-offset-2 ring-offset-slate-950 rounded-2xl' : ''}`}>
-            <img
-              src={getAvatarUrl(children.find((c) => c.id === selectedChildId)?.avatar_preset_id)}
-              alt={children.find((c) => c.id === selectedChildId)?.name || "Bambino"}
-              className="w-14 h-14 rounded-2xl bg-slate-900 border border-emerald-500/40 p-1 object-contain shadow-lg"
-            />
-          </div>
+          <ChildAvatarWithBadge
+            name={children.find((c) => c.id === selectedChildId)?.name || "Bambino"}
+            avatarPresetId={children.find((c) => c.id === selectedChildId)?.avatar_preset_id}
+            activeBadgeId={activeBadgeId}
+            activeFrameId={activeFrameId}
+            cosmeticsMap={Object.fromEntries(cosmetics.map(c => [c.id, c.icon_preset]))}
+            size="md"
+            imgClassName="border-emerald-500/40 shadow-lg"
+          />
           <div>
             <h1 className="text-xl font-black text-white flex items-center gap-1.5">
               Libreria di {children.find((c) => c.id === selectedChildId)?.name || "Favole"}
-              {activeBadgeId && <span className="text-base" title="Badge equipaggiato">🏆</span>}
+              {activeBadgeId && (
+                <span className="text-base" title="Badge equipaggiato">
+                  {getCosmeticIcon(cosmetics.find(c => c.id === activeBadgeId)?.icon_preset)}
+                </span>
+              )}
             </h1>
             <p className="text-xs text-emerald-300">
               Esplora e leggi le storie magiche assegnate a te

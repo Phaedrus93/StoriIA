@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { BookOpen, Users, Sparkles, Plus, ArrowRight, ShieldCheck } from "lucide-react";
 import { getAvatarUrl } from "@/lib/avatars";
+import { ChildAvatarWithBadge } from "@/components/ChildAvatarWithBadge";
 
 interface ChildProfile {
   id: string;
@@ -12,20 +13,33 @@ interface ChildProfile {
   birth_year?: number;
   avatar_preset_id?: string;
   adventure_points?: number;
+  active_badge_id?: string | null;
+  active_frame_id?: string | null;
 }
 
 export default function DashboardPage() {
   const [children, setChildren] = useState<ChildProfile[]>([]);
+  const [cosmeticsMap, setCosmeticsMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadData() {
       const supabase = createClient();
-      const { data } = await supabase
-        .from("child_profiles")
-        .select("id, name, birth_year, avatar_preset_id, adventure_points")
-        .order("created_at", { ascending: true });
+      const [{ data }, { data: cosmData }] = await Promise.all([
+        supabase
+          .from("child_profiles")
+          .select("id, name, birth_year, avatar_preset_id, adventure_points, active_badge_id, active_frame_id")
+          .order("created_at", { ascending: true }),
+        supabase.from("cosmetic_items").select("id, icon_preset"),
+      ]);
 
+      const map: Record<string, string> = {};
+      if (cosmData) {
+        cosmData.forEach((c: any) => {
+          map[c.id] = c.icon_preset;
+        });
+      }
+      setCosmeticsMap(map);
       setChildren(data || []);
       setLoading(false);
     }
@@ -87,10 +101,13 @@ export default function DashboardPage() {
             {children.map((child) => (
               <div key={child.id} className="glass-card p-5 flex items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
-                  <img
-                    src={getAvatarUrl(child.avatar_preset_id)}
-                    alt={child.name}
-                    className="w-14 h-14 rounded-2xl bg-slate-900/80 border border-indigo-500/30 p-1 object-contain shrink-0"
+                  <ChildAvatarWithBadge
+                    name={child.name}
+                    avatarPresetId={child.avatar_preset_id}
+                    activeBadgeId={child.active_badge_id}
+                    activeFrameId={child.active_frame_id}
+                    cosmeticsMap={cosmeticsMap}
+                    size="md"
                   />
                   <div>
                     <h3 className="font-semibold text-white">{child.name}</h3>

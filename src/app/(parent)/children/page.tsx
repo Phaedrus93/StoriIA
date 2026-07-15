@@ -19,6 +19,9 @@ import {
 } from "lucide-react";
 import { getAvatarUrl } from "@/lib/avatars";
 import ConfirmationModal from "@/components/ConfirmationModal";
+import { ChildAvatarWithBadge } from "@/components/ChildAvatarWithBadge";
+
+const TIER_RANK: Record<string, number> = { free: 1, premium: 2, family: 3 };
 
 interface ChildProfile {
   id: string;
@@ -26,10 +29,13 @@ interface ChildProfile {
   birth_year?: number;
   avatar_preset_id?: string;
   adventure_points?: number;
+  active_badge_id?: string | null;
+  active_frame_id?: string | null;
 }
 
 export default function ChildrenPage() {
   const [children, setChildren] = useState<ChildProfile[]>([]);
+  const [cosmeticsMap, setCosmeticsMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [familyId, setFamilyId] = useState<string | null>(null);
 
@@ -75,11 +81,18 @@ export default function ChildrenPage() {
     const { data: familyData } = await supabase.from("families").select("id").single();
     if (familyData) setFamilyId(familyData.id);
 
-    const { data } = await supabase
-      .from("child_profiles")
-      .select("*")
-      .order("created_at", { ascending: true });
+    const [{ data }, { data: cosmData }] = await Promise.all([
+      supabase.from("child_profiles").select("*").order("created_at", { ascending: true }),
+      supabase.from("cosmetic_items").select("id, icon_preset"),
+    ]);
 
+    const map: Record<string, string> = {};
+    if (cosmData) {
+      cosmData.forEach((c: any) => {
+        map[c.id] = c.icon_preset;
+      });
+    }
+    setCosmeticsMap(map);
     setChildren(data || []);
     setLoading(false);
     // Ricontrolla limite dopo ogni ricarica
@@ -113,63 +126,41 @@ export default function ChildrenPage() {
       return;
     }
 
+    if (!birthYear || isNaN(parseInt(birthYear)) || parseInt(birthYear) < 2000 || parseInt(birthYear) > 2100) {
+      setErrorMessage("L'anno di nascita è obbligatorio e deve essere un anno valido.");
+      return;
+    }
+
     setIsCreating(true);
 
     try {
+      const parsedYear = parseInt(birthYear);
       if (editingChildId) {
-        const { error: updErr } = await supabase
-          .from("child_profiles")
-          .update({
+        const res = await fetch("/api/family/child-profiles", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: editingChildId,
             name: name.trim(),
-            birth_year: birthYear ? parseInt(birthYear) : null,
+            birth_year: parsedYear,
             avatar_preset_id: selectedAvatar,
-          })
-          .eq("id", editingChildId);
-
-        if (updErr) throw new Error(updErr.message);
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Impossibile aggiornare il profilo.");
         handleCancelEdit();
       } else {
-        let activeFamilyId = familyId;
-        if (!activeFamilyId) {
-          const { data: authData } = await supabase.auth.getUser();
-          if (!authData.user) {
-            throw new Error("Devi effettuare l'accesso per aggiungere figli.");
-          }
-          const { data: fam } = await supabase
-            .from("families")
-            .select("id")
-            .eq("parent_user_id", authData.user.id)
-            .single();
-
-          if (fam) {
-            activeFamilyId = fam.id;
-            setFamilyId(fam.id);
-          } else {
-            const { data: newFam, error: insFamErr } = await supabase
-              .from("families")
-              .insert({ parent_user_id: authData.user.id })
-              .select("id")
-              .single();
-
-            if (insFamErr || !newFam) {
-              throw new Error(insFamErr?.message || "Errore creazione famiglia");
-            }
-            activeFamilyId = newFam.id;
-            setFamilyId(newFam.id);
-          }
-        }
-
-        const { error: insErr } = await supabase.from("child_profiles").insert({
-          family_id: activeFamilyId,
-          name: name.trim(),
-          birth_year: birthYear ? parseInt(birthYear) : null,
-          avatar_preset_id: selectedAvatar,
+        const res = await fetch("/api/family/child-profiles", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: name.trim(),
+            birth_year: parsedYear,
+            avatar_preset_id: selectedAvatar,
+          }),
         });
-
-        if (insErr) {
-          throw new Error(insErr.message);
-        }
-
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Impossibile salvare il profilo.");
         setName("");
         setBirthYear("");
       }
@@ -257,9 +248,11 @@ export default function ChildrenPage() {
                 </p>
               </div>
               <div className="flex flex-col gap-2">
-                <Link href="/billing" className="btn-primary text-xs w-full text-center py-3">
-                  ★ Upgrade Piano
-                </Link>
+                {(TIER_RANK[childLimitInfo?.tier || "free"] || 1) < TIER_RANK.family && (
+                  <Link href="/billing" className="btn-primary text-xs w-full text-center py-3">
+                    ★ Upgrade Piano
+                  </Link>
+                )}
                 <Link href="/billing#addon" className="btn-secondary text-xs w-full text-center py-2.5 text-amber-300 border-amber-500/40">
                   + Aggiungi Slot Add-on (€1.99/mese)
                 </Link>
@@ -294,8 +287,9 @@ export default function ChildrenPage() {
               </label>
               <input
                 type="number"
-                min={2014}
-                max={2026}
+                required
+                min={2000}
+                max={2100}
                 value={birthYear}
                 onChange={(e) => setBirthYear(e.target.value)}
                 placeholder="es. 2019"
@@ -380,10 +374,13 @@ export default function ChildrenPage() {
               {children.map((child) => (
                 <div key={child.id} className="glass-card p-5 flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <img
-                      src={getAvatarUrl(child.avatar_preset_id)}
-                      alt={child.name}
-                      className="w-12 h-12 rounded-2xl bg-slate-900/80 border border-indigo-500/30 p-1 object-contain"
+                    <ChildAvatarWithBadge
+                      name={child.name}
+                      avatarPresetId={child.avatar_preset_id}
+                      activeBadgeId={child.active_badge_id}
+                      activeFrameId={child.active_frame_id}
+                      cosmeticsMap={cosmeticsMap}
+                      size="md"
                     />
                     <div>
                       <h3 className="font-bold text-white">{child.name}</h3>

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
  * POST /api/billing/reduce-addon
@@ -44,20 +45,23 @@ export async function POST(req: Request) {
     }
 
     const currentAddons = family.addon_children_count || 0;
+    const effectiveCurrent =
+      family.pending_addon_children_count !== null && family.pending_addon_children_count !== undefined
+        ? family.pending_addon_children_count
+        : currentAddons;
 
-    if (targetAddonCount >= currentAddons) {
+    if (targetAddonCount >= effectiveCurrent && targetAddonCount >= currentAddons) {
       return NextResponse.json(
         { error: "La riduzione add-on richiede un numero di add-on inferiore all'attuale." },
         { status: 400 }
       );
     }
 
-    // Salviamo il valore pianificato in pending_addon_children_count
-    const { error: updErr } = await supabase
+    const adminClient = createAdminClient();
+    const { error: updErr } = await adminClient
       .from("families")
       .update({
         pending_addon_children_count: targetAddonCount,
-        updated_at: new Date().toISOString(),
       })
       .eq("id", family.id);
 
