@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Download,
 } from "lucide-react";
 import { paginateText } from "@/lib/reader/paginator";
 import { getAvatarUrl } from "@/lib/avatars";
@@ -534,6 +535,16 @@ export default function ChildReaderPage() {
               <span>Torna all&apos;elenco storie</span>
             </button>
             <div className="flex items-center gap-3">
+              <a
+                href={`/api/stories/${activeStory.id}/pdf`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-semibold text-emerald-300 hover:text-emerald-200 transition-colors shadow-sm"
+                title="Scarica PDF favola"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Scarica PDF</span>
+              </a>
               <span className="badge-glow text-xs">
                 Età {activeStory.target_age_range}
               </span>

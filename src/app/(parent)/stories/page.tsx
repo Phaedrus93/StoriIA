@@ -11,6 +11,7 @@ import {
   Clock,
   Sparkles,
   Plus,
+  Download,
 } from "lucide-react";
 
 interface ChildProfile {
@@ -213,15 +214,27 @@ export default function StoriesArchivePage() {
                     </h3>
                   </div>
 
-                  {st.source !== "preset" && (
-                    <button
-                      onClick={() => handleDeleteStory(st)}
-                      className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors self-start md:self-center"
-                      title="Elimina storia"
+                  <div className="flex items-center gap-2 self-start md:self-center">
+                    <a
+                      href={`/api/stories/${st.id}/pdf`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-2 rounded-xl text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 transition-colors flex items-center gap-1.5 text-xs font-medium"
+                      title="Scarica PDF della favola"
                     >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
+                      <Download className="w-4 h-4" />
+                      <span className="hidden sm:inline">PDF</span>
+                    </a>
+                    {st.source !== "preset" && (
+                      <button
+                        onClick={() => handleDeleteStory(st)}
+                        className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                        title="Elimina storia"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="text-xs text-slate-300 leading-relaxed line-clamp-3 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
