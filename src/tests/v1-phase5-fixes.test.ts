@@ -145,6 +145,23 @@ describe("StoriIA — Verifica Correzioni di Dettaglio Fase 5 (Punti 1-5)", () =
       CREATE OR REPLACE FUNCTION auth.jwt() RETURNS JSONB LANGUAGE sql STABLE AS $$
         SELECT COALESCE(NULLIF(current_setting('request.jwt.claims', true), ''), '{}')::jsonb;
       $$;
+
+      CREATE SCHEMA IF NOT EXISTS storage;
+      CREATE TABLE IF NOT EXISTS storage.buckets (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        public BOOLEAN DEFAULT false
+      );
+      CREATE TABLE IF NOT EXISTS storage.objects (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        bucket_id TEXT,
+        name TEXT,
+        owner UUID,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now(),
+        last_accessed_at TIMESTAMPTZ DEFAULT now(),
+        metadata JSONB
+      );
     `);
 
     const migrationsDir = path.join(process.cwd(), "supabase/migrations");

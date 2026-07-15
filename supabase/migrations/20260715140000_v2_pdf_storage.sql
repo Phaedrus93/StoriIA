@@ -3,25 +3,7 @@
 ALTER TABLE public.stories
 ADD COLUMN IF NOT EXISTS pdf_storage_path TEXT DEFAULT NULL;
 
--- 2. Creazione del bucket privato su storage.buckets
-CREATE SCHEMA IF NOT EXISTS storage;
-CREATE TABLE IF NOT EXISTS storage.buckets (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  public BOOLEAN DEFAULT false
-);
-
-CREATE TABLE IF NOT EXISTS storage.objects (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  bucket_id TEXT,
-  name TEXT,
-  owner UUID,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now(),
-  last_accessed_at TIMESTAMPTZ DEFAULT now(),
-  metadata JSONB
-);
-
+-- 2. Configurazione del bucket privato su storage.buckets (tabella nativa Supabase)
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('story-pdfs', 'story-pdfs', false)
 ON CONFLICT (id) DO UPDATE SET public = false;
