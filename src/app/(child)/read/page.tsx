@@ -35,6 +35,7 @@ interface ReadableStory {
   reading_status: "new" | "in_progress" | "completed";
   last_read_position: number;
   created_at: string;
+  pdf_storage_path?: string | null;
 }
 
 export default function ChildReaderPage() {
@@ -45,6 +46,7 @@ export default function ChildReaderPage() {
   const [activeStory, setActiveStory] = useState<ReadableStory | null>(null);
   const [currentPageIdx, setCurrentPageIdx] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadingPdfId, setLoadingPdfId] = useState<string | null>(null);
 
   const storyPages = useMemo(() => {
     if (!activeStory) return [];
@@ -161,6 +163,42 @@ export default function ChildReaderPage() {
     }
   };
 
+  async function handleGenerateOrDownloadPDF(st: ReadableStory) {
+    setLoadingPdfId(st.id);
+    try {
+      const res = await fetch(`/api/stories/${st.id}/pdf/generate`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        alert(`Errore PDF: ${data.error || "Impossibile generare/ottenere il PDF"}`);
+        return;
+      }
+      if (data.signedUrl) {
+        window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+        if (data.storagePath && !st.pdf_storage_path) {
+          setStories((prev) =>
+            prev.map((item) =>
+              item.id === st.id
+                ? { ...item, pdf_storage_path: data.storagePath }
+                : item
+            )
+          );
+          if (activeStory?.id === st.id) {
+            setActiveStory((prev) =>
+              prev ? { ...prev, pdf_storage_path: data.storagePath } : prev
+            );
+          }
+        }
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Errore di connessione";
+      alert(`Errore di connessione al server: ${msg}`);
+    } finally {
+      setLoadingPdfId(null);
+    }
+  }
+
   async function loadInitialData() {
     setLoading(true);
     const {
@@ -210,7 +248,7 @@ export default function ChildReaderPage() {
     // Carica tutte le storie della famiglia
     const { data: allStories } = await supabase
       .from("stories")
-      .select("id, generated_text, target_age_range, created_at")
+      .select("id, generated_text, target_age_range, created_at, pdf_storage_path")
       .order("created_at", { ascending: false });
 
     // Carica le assegnazioni specifiche se c'è un bambino selezionato
@@ -251,6 +289,7 @@ export default function ChildReaderPage() {
           reading_status: assignment ? assignment.status : "new",
           last_read_position: assignment ? assignment.position : 0,
           created_at: s.created_at,
+          pdf_storage_path: s.pdf_storage_path,
         };
       });
 
@@ -535,16 +574,29 @@ export default function ChildReaderPage() {
               <span>Torna all&apos;elenco storie</span>
             </button>
             <div className="flex items-center gap-3">
-              <a
-                href={`/api/stories/${activeStory.id}/pdf`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-semibold text-emerald-300 hover:text-emerald-200 transition-colors shadow-sm"
-                title="Scarica PDF favola"
+              <button
+                onClick={() => handleGenerateOrDownloadPDF(activeStory)}
+                disabled={loadingPdfId === activeStory.id}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-semibold text-emerald-300 hover:text-emerald-200 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                title={activeStory.pdf_storage_path ? "Scarica PDF favola" : "Genera PDF favola"}
               >
-                <Download className="w-3.5 h-3.5" />
-                <span>Scarica PDF</span>
-              </a>
+                {loadingPdfId === activeStory.id ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-emerald-300 border-t-transparent rounded-full animate-spin inline-block" />
+                    <span>{activeStory.pdf_storage_path ? "Apertura..." : "Generazione..."}</span>
+                  </>
+                ) : activeStory.pdf_storage_path ? (
+                  <>
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Scarica PDF</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Genera PDF</span>
+                  </>
+                )}
+              </button>
               <span className="badge-glow text-xs">
                 Età {activeStory.target_age_range}
               </span>

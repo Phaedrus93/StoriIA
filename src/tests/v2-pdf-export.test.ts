@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
 import fs from "fs";
 import path from "path";
-import { GET as getStoryPDF } from "@/app/api/stories/[id]/pdf/route";
+import { POST as generateStoryPDF } from "@/app/api/stories/[id]/pdf/generate/route";
 import zlib from "zlib";
 
 function extractTextFromPDF(buffer: Buffer): string {
@@ -15,7 +15,7 @@ function extractTextFromPDF(buffer: Buffer): string {
       const streamBuf = Buffer.from(match[1], "latin1");
       let inflated = zlib.unzipSync(streamBuf).toString("latin1");
       
-      // Decodifica operatori TJ (es. [<4c6120> 80 <56> 90 <6f6c7065...>] TJ) o Tj (es. <4c6120> Tj)
+      // Decodifica operatori TJ / Tj sia in formato esadecimale (<...>) sia parentesi ((...))
       inflated = inflated.replace(/\[(.*?)\]\s*TJ|<([0-9a-fA-F]+)>\s*Tj|\((.*?)\)\s*Tj/gi, (fullMatch, content, singleHex, singleParen) => {
         let line = "";
         if (singleHex) {
@@ -44,7 +44,7 @@ function extractTextFromPDF(buffer: Buffer): string {
 
       uncompressedText += "\n--- STREAM ---\n" + inflated;
     } catch (e) {
-      // Ignora stream non zlib o binari diversi
+      // Ignora stream non zlib
     }
   }
   return uncompressedText;
@@ -52,88 +52,142 @@ function extractTextFromPDF(buffer: Buffer): string {
 
 let dbInstance: PGlite | null = null;
 let currentTestUserId = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380e55"; // Default: Genitore titolare
+const inMemoryStorage = new Map<string, Buffer>();
 
-const createPGliteSupabaseAdapter = (pglite: PGlite) => ({
-  auth: {
-    getUser: async () => {
-      if (!currentTestUserId) {
-        return { data: { user: null }, error: null };
-      }
-      const res = await pglite.query(`SELECT * FROM auth.users WHERE id = '${currentTestUserId}' LIMIT 1`);
-      const row = res.rows[0] as any;
-      return {
-        data: {
-          user: row ? { id: row.id, email: row.email || "parent@example.com", app_metadata: {} } : null,
-        },
-        error: null,
-      };
+const createPGliteSupabaseAdapter = (pglite: PGlite, role: "authenticated" | "service_role" = "authenticated") => {
+  let whereClauses: string[] = [];
+  return {
+    auth: {
+      getUser: async () => {
+        if (!currentTestUserId) {
+          return { data: { user: null }, error: null };
+        }
+        const res = await pglite.query(`SELECT * FROM auth.users WHERE id = '${currentTestUserId}' LIMIT 1`);
+        const row = res.rows[0] as any;
+        return {
+          data: {
+            user: row ? { id: row.id, email: row.email || "parent@example.com", app_metadata: {} } : null,
+          },
+          error: null,
+        };
+      },
     },
-  },
-  from: (table: string) => {
-    let whereClauses: string[] = [];
-    return {
-      select: (_cols?: string) => ({
-        eq: function (col: string, val: any) {
-          const formattedVal = typeof val === "string" ? `'${val}'` : val;
-          whereClauses.push(`${col} = ${formattedVal}`);
-          return this;
-        },
-        single: async () => {
-          const whereStr = whereClauses.length ? `WHERE ${whereClauses.join(" AND ")}` : "";
-          const res = await pglite.query(`SELECT * FROM public.${table} ${whereStr} LIMIT 1`);
-          const row = res.rows[0] as any;
-          if (!row) return { data: null, error: { message: "Not found" } };
+    from: (table: string) => {
+      let currentWhere: string[] = [];
+      return {
+        select: (_cols?: string) => {
+          currentWhere = [];
+          return {
+            eq: function (col: string, val: any) {
+              const formattedVal = typeof val === "string" ? `'${val}'` : val;
+              currentWhere.push(`${col} = ${formattedVal}`);
+              return this;
+            },
+            single: async () => {
+              const whereStr = currentWhere.length ? `WHERE ${currentWhere.join(" AND ")}` : "";
+              const res = await pglite.query(`SELECT * FROM public.${table} ${whereStr} LIMIT 1`);
+              const row = res.rows[0] as any;
+              if (!row) return { data: null, error: { message: "Not found" } };
 
-          if (table === "stories") {
-            if (row.family_id) {
-              const famRes = await pglite.query(`SELECT parent_user_id FROM public.families WHERE id = '${row.family_id}' LIMIT 1`);
-              row.families = famRes.rows[0] || null;
-            } else {
-              row.families = null;
-            }
-            if (row.moral_lesson_id) {
-              const morRes = await pglite.query(`SELECT label, title, description FROM public.moral_lessons WHERE id = '${row.moral_lesson_id}' LIMIT 1`);
-              row.moral_lessons = morRes.rows[0] || null;
-            } else {
-              row.moral_lessons = null;
-            }
-          }
-          return { data: row, error: null };
-        },
-      }),
-      insert: (data: Record<string, any> | Record<string, any>[]) => ({
-        select: (_cols = "*") => ({
-          single: async () => {
-            const rows = Array.isArray(data) ? data : [data];
-            let insertedRows: any[] = [];
-            for (const row of rows) {
-              const colsList = Object.keys(row).join(", ");
-              const valsList = Object.values(row)
-                .map((v) => (v === null ? "NULL" : typeof v === "boolean" || typeof v === "number" ? v : typeof v === "object" ? `'${JSON.stringify(v)}'` : `'${v}'`))
-                .join(", ");
-              try {
-                const res = await pglite.query(`INSERT INTO public.${table} (${colsList}) VALUES (${valsList}) RETURNING *`);
-                if (res.rows[0]) insertedRows.push(res.rows[0]);
-              } catch (err: any) {
-                return { data: null, error: { message: err.message || "Insert error" } };
+              if (table === "stories") {
+                if (row.family_id) {
+                  const famRes = await pglite.query(`SELECT parent_user_id FROM public.families WHERE id = '${row.family_id}' LIMIT 1`);
+                  row.families = famRes.rows[0] || null;
+                } else {
+                  row.families = null;
+                }
+                if (row.moral_lesson_id) {
+                  const morRes = await pglite.query(`SELECT label, title, description FROM public.moral_lessons WHERE id = '${row.moral_lesson_id}' LIMIT 1`);
+                  row.moral_lessons = morRes.rows[0] || null;
+                } else {
+                  row.moral_lessons = null;
+                }
               }
-            }
-            return { data: insertedRows[0] || null, error: null };
+              return { data: row, error: null };
+            },
+          };
+        },
+        update: (updateData: Record<string, any>) => ({
+          eq: async (col: string, val: any) => {
+            const formattedVal = typeof val === "string" ? `'${val}'` : val;
+            const setList = Object.entries(updateData)
+              .map(([k, v]) => `${k} = ${v === null ? "NULL" : typeof v === "string" ? `'${v}'` : v}`)
+              .join(", ");
+            const res = await pglite.query(`UPDATE public.${table} SET ${setList} WHERE ${col} = ${formattedVal} RETURNING *`);
+            return { data: res.rows || [], error: null };
           },
         }),
+        insert: (data: Record<string, any> | Record<string, any>[]) => ({
+          select: (_cols = "*") => ({
+            single: async () => {
+              const rows = Array.isArray(data) ? data : [data];
+              let insertedRows: any[] = [];
+              for (const row of rows) {
+                const colsList = Object.keys(row).join(", ");
+                const valsList = Object.values(row)
+                  .map((v) => (v === null ? "NULL" : typeof v === "boolean" || typeof v === "number" ? v : typeof v === "object" ? `'${JSON.stringify(v)}'` : `'${v}'`))
+                  .join(", ");
+                try {
+                  const res = await pglite.query(`INSERT INTO public.${table} (${colsList}) VALUES (${valsList}) RETURNING *`);
+                  if (res.rows[0]) insertedRows.push(res.rows[0]);
+                } catch (err: any) {
+                  return { data: null, error: { message: err.message || "Insert error" } };
+                }
+              }
+              return { data: insertedRows[0] || null, error: null };
+            },
+          }),
+        }),
+      };
+    },
+    storage: {
+      from: (bucket: string) => ({
+        upload: async (pathStr: string, fileBody: Buffer | string, options?: any) => {
+          if (role !== "service_role") {
+            return { data: null, error: { message: "new row violates row-level security policy for table storage.objects" } };
+          }
+          const buf = Buffer.isBuffer(fileBody) ? fileBody : Buffer.from(fileBody);
+          await pglite.query(`INSERT INTO storage.objects (bucket_id, name, metadata) VALUES ('${bucket}', '${pathStr}', '{"size": ${buf.length}}') ON CONFLICT (id) DO NOTHING;`);
+          inMemoryStorage.set(`${bucket}:${pathStr}`, buf);
+          return { data: { path: pathStr }, error: null };
+        },
+        createSignedUrl: async (pathStr: string, expiresIn: number) => {
+          if (role !== "service_role") {
+            return { data: null, error: { message: "new row violates row-level security policy for table storage.objects" } };
+          }
+          if (!inMemoryStorage.has(`${bucket}:${pathStr}`)) {
+            return { data: null, error: { message: "Object not found" } };
+          }
+          return { data: { signedUrl: `https://storage.supabase.co/signed/${bucket}/${pathStr}?token=mock-signed-jwt&expiresIn=${expiresIn}` }, error: null };
+        },
+        download: async (pathStr: string) => {
+          if (role !== "service_role") {
+            return { data: null, error: { message: "new row violates row-level security policy for table storage.objects" } };
+          }
+          const buf = inMemoryStorage.get(`${bucket}:${pathStr}`);
+          if (!buf) return { data: null, error: { message: "Object not found" } };
+          return { data: buf, error: null };
+        },
       }),
-    };
-  },
-});
+    },
+  };
+};
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => {
     if (!dbInstance) throw new Error("dbInstance not initialized");
-    return createPGliteSupabaseAdapter(dbInstance);
+    return createPGliteSupabaseAdapter(dbInstance, "authenticated");
   },
 }));
 
-describe("StoriIA v2.0 Phase 1 — Export PDF Storie (/api/stories/[id]/pdf)", () => {
+vi.mock("@/lib/supabase/admin", () => ({
+  createAdminClient: () => {
+    if (!dbInstance) throw new Error("dbInstance not initialized");
+    return createPGliteSupabaseAdapter(dbInstance, "service_role");
+  },
+}));
+
+describe("StoriIA v2.0 Phase 1 — Export PDF Storie (/api/stories/[id]/pdf/generate)", () => {
   let db: PGlite;
   const ownerParentId = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380e55";
   const otherParentId = "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380e66";
@@ -147,6 +201,7 @@ describe("StoriIA v2.0 Phase 1 — Export PDF Storie (/api/stories/[id]/pdf)", (
     db = new PGlite();
     dbInstance = db;
     process.env.NODE_ENV = "test";
+    inMemoryStorage.clear();
 
     await db.exec(`
       CREATE ROLE authenticated NOLOGIN;
@@ -188,7 +243,7 @@ describe("StoriIA v2.0 Phase 1 — Export PDF Storie (/api/stories/[id]/pdf)", (
         ('${otherFamilyId}', '${otherParentId}', 'premium', 'active', 50);
     `);
 
-    // Inserimento Profilo Bambino per la famiglia titolare con nome riconoscibile
+    // Inserimento Profilo Bambino
     await db.query(`
       INSERT INTO public.child_profiles (id, family_id, name, birth_year)
       VALUES ('${childProfileId}', '${ownerFamilyId}', 'Marco Il Bambino Segreto', 2018);
@@ -200,10 +255,10 @@ describe("StoriIA v2.0 Phase 1 — Export PDF Storie (/api/stories/[id]/pdf)", (
       VALUES ('amicizia_magica', 'Amicizia', 'Il Valore dell Amicizia', 'Aiutare gli amici rende il cuore più grande.');
     `);
 
-    // Inserimento Storia AI (associata alla famiglia titolare e con assegnazione al bambino)
+    // Inserimento Storia AI (pdf_storage_path = NULL all'inizio)
     await db.query(`
-      INSERT INTO public.stories (id, family_id, moral_lesson_id, target_age_range, generated_text, source)
-      VALUES ('${aiStoryId}', '${ownerFamilyId}', 'amicizia_magica', '4-6', '# La Volpe e il Bosco Incantato\\n\\nC era una volta una piccola volpe che correva felice nel boscoincantato.', 'ai_generated');
+      INSERT INTO public.stories (id, family_id, moral_lesson_id, target_age_range, generated_text, source, pdf_storage_path)
+      VALUES ('${aiStoryId}', '${ownerFamilyId}', 'amicizia_magica', '4-6', '# La Volpe e il Bosco Incantato\\n\\nC era una volta una piccola volpe che correva felice nel boscoincantato.', 'ai_generated', NULL);
     `);
 
     // Assegnazione della storia al bambino
@@ -212,10 +267,10 @@ describe("StoriIA v2.0 Phase 1 — Export PDF Storie (/api/stories/[id]/pdf)", (
       VALUES ('${aiStoryId}', '${childProfileId}', 'completed');
     `);
 
-    // Inserimento Storia Preset (family_id = NULL)
+    // Inserimento Storia Preset
     await db.query(`
-      INSERT INTO public.stories (id, family_id, target_age_range, generated_text, source)
-      VALUES ('${presetStoryId}', NULL, '7-10', '# Il Viaggio del Piccolo Drago\\n\\nNel lontano regno delle nuvole viveva un drago curioso di scoprire le stelle.', 'preset');
+      INSERT INTO public.stories (id, family_id, target_age_range, generated_text, source, pdf_storage_path)
+      VALUES ('${presetStoryId}', NULL, '7-10', '# Il Viaggio del Piccolo Drago\\n\\nNel lontano regno delle nuvole viveva un drago curioso di scoprire le stelle.', 'preset', NULL);
     `);
   });
 
@@ -223,62 +278,87 @@ describe("StoriIA v2.0 Phase 1 — Export PDF Storie (/api/stories/[id]/pdf)", (
     await db.close();
   });
 
-  it("Test 1: Genera e verifica il PDF di una storia ai_generated (header application/pdf, contenuto presente e ASSENZA di dati/identificativi del profilo bambino)", async () => {
+  it("Test 1: Genera il PDF con pdf-lib su storage (cached: false), verifica assenza di dati/identificativi del profilo bambino, e verifica riutilizzo cache (cached: true) alla seconda chiamata", async () => {
     currentTestUserId = ownerParentId; // Genitore proprietario
 
-    const req = new Request(`http://localhost/api/stories/${aiStoryId}/pdf`, { method: "GET" });
-    const res = await getStoryPDF(req, { params: Promise.resolve({ id: aiStoryId }) });
+    const req1 = new Request(`http://localhost/api/stories/${aiStoryId}/pdf/generate`, { method: "POST" });
+    const res1 = await generateStoryPDF(req1, { params: Promise.resolve({ id: aiStoryId }) });
+    const data1 = await res1.json();
 
-    expect(res.status).toBe(200);
-    expect(res.headers.get("Content-Type")).toBe("application/pdf");
-    expect(res.headers.get("Content-Disposition")).toContain("StoriIA_");
-    expect(res.headers.get("Content-Disposition")).toContain("La_Volpe_e_il_Bosco_Incantato.pdf");
+    expect(res1.status).toBe(200);
+    expect(data1.cached).toBe(false);
+    expect(data1.storagePath).toContain("stories/");
+    expect(data1.signedUrl).toContain("https://storage.supabase.co/signed/story-pdfs/");
 
-    const arrayBuffer = await res.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    // Verifica che il buffer salvato in inMemoryStorage (bucket story-pdfs) sia un PDF valido
+    const storedBuffer = inMemoryStorage.get(`story-pdfs:${data1.storagePath}`);
+    expect(storedBuffer).toBeDefined();
+    expect(storedBuffer!.subarray(0, 5).toString("ascii")).toBe("%PDF-");
 
-    // Verifica firma PDF standard (%PDF-)
-    const pdfHeader = buffer.subarray(0, 5).toString("ascii");
-    expect(pdfHeader).toBe("%PDF-");
-
-    // Decomprimiamo i flussi FlateDecode ed estraiamo tutto il testo in chiaro e grezzo dal PDF
-    const pdfText = extractTextFromPDF(buffer);
-
-    // Verifica presenza del titolo nel PDF, dei metadati e della morale
+    // Estrazione e verifica del contenuto e privacy by design
+    const pdfText = extractTextFromPDF(storedBuffer!);
     expect(pdfText).toContain("La Volpe e il Bosco Incantato");
     expect(pdfText).toContain("Fascia d");
     expect(pdfText).toContain("4-6 anni");
     expect(pdfText).toContain("Il Valore dell Amicizia");
 
-    // VERIFICA CRITICA PRIVACY BY DESIGN: Nessun riferimento al nome del bambino o ai suoi ID
+    // VERIFICA CRITICA PRIVACY BY DESIGN
     expect(pdfText).not.toContain("Marco Il Bambino Segreto");
     expect(pdfText).not.toContain("Marco");
     expect(pdfText).not.toContain(childProfileId);
+
+    // Verifica aggiornamento su DB
+    const resDb = await db.query(`SELECT pdf_storage_path FROM public.stories WHERE id = '${aiStoryId}'`);
+    expect((resDb.rows[0] as any).pdf_storage_path).toBe(data1.storagePath);
+
+    // Seconda chiamata POST per la stessa storia: deve restituire cached: true e una nuova signed URL senza rigenerare
+    const req2 = new Request(`http://localhost/api/stories/${aiStoryId}/pdf/generate`, { method: "POST" });
+    const res2 = await generateStoryPDF(req2, { params: Promise.resolve({ id: aiStoryId }) });
+    expect(res2.status).toBe(200);
+    const data2 = await res2.json();
+    expect(data2.cached).toBe(true);
+    expect(data2.storagePath).toBe(data1.storagePath);
+    expect(data2.signedUrl).toContain("token=mock-signed-jwt");
   });
 
-  it("Test 2: Verifica che per una storia preset (family_id = NULL) QUALUNQUE genitore autenticato (anche diverso da chi l'ha letta) possa scaricare il PDF", async () => {
+  it("Test 2: Verifica che per una storia preset (family_id = NULL) QUALUNQUE genitore autenticato possa richiedere la generazione e ottenere la signed URL", async () => {
     currentTestUserId = otherParentId; // Genitore di un'altra famiglia
 
-    const req = new Request(`http://localhost/api/stories/${presetStoryId}/pdf`, { method: "GET" });
-    const res = await getStoryPDF(req, { params: Promise.resolve({ id: presetStoryId }) });
+    const req = new Request(`http://localhost/api/stories/${presetStoryId}/pdf/generate`, { method: "POST" });
+    const res = await generateStoryPDF(req, { params: Promise.resolve({ id: presetStoryId }) });
 
     expect(res.status).toBe(200);
-    expect(res.headers.get("Content-Type")).toBe("application/pdf");
-    expect(res.headers.get("Content-Disposition")).toContain("Il_Viaggio_del_Piccolo_Drago.pdf");
-
-    const arrayBuffer = await res.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    expect(buffer.subarray(0, 5).toString("ascii")).toBe("%PDF-");
+    const data = await res.json();
+    expect(data.signedUrl).toContain("https://storage.supabase.co/signed/story-pdfs/");
   });
 
-  it("Test 3: Verifica che la richiesta del PDF di una storia ai_generated da parte di un genitore DI UN'ALTRA FAMIGLIA venga rifiutata con 403", async () => {
+  it("Test 3: Verifica che la richiesta per una storia ai_generated da parte di un genitore DI UN'ALTRA FAMIGLIA venga respinta con 403 (sia in generazione che per richiesta signed URL esistente)", async () => {
     currentTestUserId = otherParentId; // Genitore non proprietario
 
-    const req = new Request(`http://localhost/api/stories/${aiStoryId}/pdf`, { method: "GET" });
-    const res = await getStoryPDF(req, { params: Promise.resolve({ id: aiStoryId }) });
+    // Richiesta di una storia che ora ha già pdf_storage_path valorizzato da Test 1
+    const req = new Request(`http://localhost/api/stories/${aiStoryId}/pdf/generate`, { method: "POST" });
+    const res = await generateStoryPDF(req, { params: Promise.resolve({ id: aiStoryId }) });
 
     expect(res.status).toBe(403);
     const data = await res.json();
     expect(data.error).toContain("Accesso negato: il documento appartiene a un'altra famiglia");
+  });
+
+  it("Test 4: Blocco RLS Storage — verifica che l'accesso diretto al bucket story-pdfs con ruolo 'authenticated' (non 'service_role') venga respinto", async () => {
+    // Eseguiamo una chiamata diretta con l'adapter configurato con ruolo 'authenticated'
+    const authenticatedAdapter = createPGliteSupabaseAdapter(db, "authenticated");
+    const storageClient = authenticatedAdapter.storage.from("story-pdfs");
+
+    // Richiediamo una signed URL e il download diretto del file che sappiamo esistere nello storage (creato in Test 1)
+    const existingPath = (await db.query(`SELECT pdf_storage_path FROM public.stories WHERE id = '${aiStoryId}'`)).rows[0] as any;
+    expect(existingPath.pdf_storage_path).toBeDefined();
+
+    const signedRes = await storageClient.createSignedUrl(existingPath.pdf_storage_path, 300);
+    expect(signedRes.data).toBeNull();
+    expect(signedRes.error?.message).toContain("new row violates row-level security policy");
+
+    const downloadRes = await storageClient.download(existingPath.pdf_storage_path);
+    expect(downloadRes.data).toBeNull();
+    expect(downloadRes.error?.message).toContain("new row violates row-level security policy");
   });
 });

@@ -32,6 +32,7 @@ interface Story {
   target_age_range: string;
   generated_text: string;
   created_at: string;
+  pdf_storage_path?: string | null;
   assignments?: StoryAssignment[];
 }
 
@@ -41,6 +42,7 @@ export default function StoriesArchivePage() {
   const [loading, setLoading] = useState(true);
   const [storyToDelete, setStoryToDelete] = useState<Story | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [loadingPdfId, setLoadingPdfId] = useState<string | null>(null);
 
   const supabase = createClient();
 
@@ -82,6 +84,37 @@ export default function StoriesArchivePage() {
   const handleDeleteStory = (st: Story) => {
     setStoryToDelete(st);
   };
+
+  async function handleGenerateOrDownloadPDF(st: Story) {
+    setLoadingPdfId(st.id);
+    try {
+      const res = await fetch(`/api/stories/${st.id}/pdf/generate`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        alert(`Errore PDF: ${data.error || "Impossibile generare/ottenere il PDF"}`);
+        return;
+      }
+      if (data.signedUrl) {
+        window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+        if (data.storagePath && !st.pdf_storage_path) {
+          setStories((prev) =>
+            prev.map((item) =>
+              item.id === st.id
+                ? { ...item, pdf_storage_path: data.storagePath }
+                : item
+            )
+          );
+        }
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Errore di connessione";
+      alert(`Errore di connessione al server: ${msg}`);
+    } finally {
+      setLoadingPdfId(null);
+    }
+  }
 
   const confirmDeleteStory = async () => {
     if (!storyToDelete) return;
@@ -215,16 +248,31 @@ export default function StoriesArchivePage() {
                   </div>
 
                   <div className="flex items-center gap-2 self-start md:self-center">
-                    <a
-                      href={`/api/stories/${st.id}/pdf`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-2 rounded-xl text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 transition-colors flex items-center gap-1.5 text-xs font-medium"
-                      title="Scarica PDF della favola"
+                    <button
+                      onClick={() => handleGenerateOrDownloadPDF(st)}
+                      disabled={loadingPdfId === st.id}
+                      className="p-2 rounded-xl text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 transition-colors flex items-center gap-1.5 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                      title={st.pdf_storage_path ? "Scarica PDF della favola" : "Genera PDF della favola"}
                     >
-                      <Download className="w-4 h-4" />
-                      <span className="hidden sm:inline">PDF</span>
-                    </a>
+                      {loadingPdfId === st.id ? (
+                        <>
+                          <span className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin inline-block" />
+                          <span className="hidden sm:inline">
+                            {st.pdf_storage_path ? "Apertura..." : "Generazione..."}
+                          </span>
+                        </>
+                      ) : st.pdf_storage_path ? (
+                        <>
+                          <Download className="w-4 h-4 text-indigo-400" />
+                          <span className="hidden sm:inline">Scarica PDF</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-4 h-4 text-amber-400" />
+                          <span className="hidden sm:inline">Genera PDF</span>
+                        </>
+                      )}
+                    </button>
                     {st.source !== "preset" && (
                       <button
                         onClick={() => handleDeleteStory(st)}
