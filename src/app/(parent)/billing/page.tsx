@@ -12,9 +12,6 @@ import {
   PlusCircle,
   AlertCircle,
   Users,
-  Lock,
-  ShoppingBag,
-  Star,
 } from "lucide-react";
 
 interface LedgerEntry {
@@ -23,27 +20,6 @@ interface LedgerEntry {
   transaction_type: string;
   description: string;
   created_at: string;
-}
-
-interface NarrativeItem {
-  id: string;
-  name: string;
-  content_type: string;
-  description: string;
-  price_cents: number;
-  icon_preset: string;
-  isUnlocked: boolean;
-  pack_id?: string;
-}
-
-function getCatalogIcon(preset: string): string {
-  const icons: Record<string, string> = {
-    snowflake: "❄️", flame: "🔥", cpu: "🤖", waves: "🌊",
-    star: "⭐", trees: "🌲", castle: "🏰", anchor: "⚓",
-    shield: "🛡️", search: "🔍", sparkles: "✨", rocket: "🚀",
-    crown: "👑", star_frame: "⭐",
-  };
-  return icons[preset] || "🎁";
 }
 
 function BillingContent() {
@@ -58,12 +34,8 @@ function BillingContent() {
   const [addonCount, setAddonCount] = useState<number>(0);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  const [catalog, setCatalog] = useState<NarrativeItem[]>([]);
-  const [catalogTab, setCatalogTab] = useState<"CHARACTER_TRAIT" | "SETTING_THEME" | "STORY_STYLE">("CHARACTER_TRAIT");
-
   useEffect(() => {
     loadBillingStatus();
-    loadCatalog();
   }, []);
 
   async function loadBillingStatus() {
@@ -84,16 +56,6 @@ function BillingContent() {
       }
     } catch { /* ignora */ }
     setLoading(false);
-  }
-
-  async function loadCatalog() {
-    try {
-      const res = await fetch("/api/family/unlocked-content");
-      if (res.ok) {
-        const data = await res.json();
-        setCatalog(data.all || []);
-      }
-    } catch { /* ignora */ }
   }
 
   const handleStripeCheckout = async (
@@ -120,29 +82,6 @@ function BillingContent() {
       setActionLoading(null);
     }
   };
-
-  const handleUnlockNarrativeContent = async (item: NarrativeItem) => {
-    setActionLoading(`content_${item.id}`);
-    try {
-      const res = await fetch("/api/stripe/create-checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "narrative_content", contentId: item.id }),
-      });
-      const data = await res.json();
-      if (data.sandboxMode) {
-        alert("Stripe Sandbox: configura STRIPE_PRICE_* in .env.local per attivare i pagamenti reali.");
-      } else if (data.checkoutUrl) {
-        window.location.href = data.checkoutUrl;
-      }
-    } catch {
-      alert("Errore pagamento.");
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const catalogFiltered = catalog.filter((i) => i.content_type === catalogTab);
 
   const plans = [
     {
@@ -405,95 +344,6 @@ function BillingContent() {
                   {actionLoading === "addon_child_addon_child" ? "Reindirizzamento..." : "Aggiungi Slot (+€1.99/mese)"}
                 </button>
               </div>
-            </div>
-          </div>
-
-          {/* Catalogo Narrativo */}
-          <div>
-            <h2 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
-              <ShoppingBag className="w-5 h-5 text-indigo-400" />
-              Negozio Contenuti Narrativi
-            </h2>
-            <p className="text-xs text-slate-400 mb-4">
-              Sblocca tratti speciali, ambientazioni tematiche e stili narrativi per arricchire la creazione di storie.
-              I contenuti sbloccati compaiono come opzioni extra nel wizard di creazione.
-            </p>
-
-            {/* Tab type filter */}
-            <div className="flex gap-2 mb-4">
-              {([
-                { key: "CHARACTER_TRAIT", label: "Tratti Personaggio" },
-                { key: "SETTING_THEME",   label: "Ambientazioni" },
-                { key: "STORY_STYLE",     label: "Stili Storia" },
-              ] as const).map((tab) => (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={() => setCatalogTab(tab.key)}
-                  className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
-                    catalogTab === tab.key
-                      ? "bg-indigo-500 text-white shadow-md"
-                      : "bg-slate-900 text-slate-400 hover:text-white border border-slate-800"
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {catalogFiltered.map((item) => (
-                <div
-                  key={item.id}
-                  className={`glass-card p-5 flex flex-col justify-between space-y-3 ${
-                    item.isUnlocked ? "border-emerald-500/40 bg-emerald-500/5" : ""
-                  }`}
-                >
-                  <div>
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="text-2xl">{getCatalogIcon(item.icon_preset)}</span>
-                      {item.isUnlocked ? (
-                        <span className="text-[10px] font-bold bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full shrink-0">
-                          ✓ Sbloccato
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-bold text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full shrink-0">
-                          €{(item.price_cents / 100).toFixed(2)}
-                        </span>
-                      )}
-                    </div>
-                    <h3 className="text-sm font-bold text-white mt-2">{item.name}</h3>
-                    <p className="text-xs text-slate-400 mt-1 leading-relaxed">{item.description}</p>
-                  </div>
-                  {item.isUnlocked ? (
-                    <div className="flex items-center gap-1.5 text-emerald-400 text-xs font-semibold">
-                      <Star className="w-3.5 h-3.5" />
-                      Disponibile nelle creazioni
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={!!actionLoading}
-                      onClick={() => handleUnlockNarrativeContent(item)}
-                      className="btn-primary text-xs w-full flex items-center justify-center gap-1.5"
-                    >
-                      {actionLoading === `content_${item.id}` ? (
-                        "Reindirizzamento..."
-                      ) : (
-                        <>
-                          <Lock className="w-3.5 h-3.5" />
-                          Sblocca — €{(item.price_cents / 100).toFixed(2)}
-                        </>
-                      )}
-                    </button>
-                  )}
-                </div>
-              ))}
-              {catalogFiltered.length === 0 && (
-                <div className="col-span-3 glass-card p-8 text-center text-slate-400 text-sm">
-                  Nessun contenuto disponibile in questa categoria.
-                </div>
-              )}
             </div>
           </div>
 

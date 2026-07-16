@@ -78,7 +78,11 @@ export async function POST(req: Request) {
       moralLessonTitle,
       moralLessonDescription,
       assignToChildIds,
+      preciseAge,
+      precise_age,
     } = body;
+
+    const resolvedPreciseAge = typeof preciseAge === "number" ? preciseAge : typeof precise_age === "number" ? precise_age : undefined;
 
     // 3. Controllo Soft Rate Limit (max 20 storie al giorno per famiglia)
     const today = new Date().toISOString().split("T")[0];
@@ -111,7 +115,7 @@ export async function POST(req: Request) {
             ? assignToChildIds[0]
             : null,
         status: "STARTED",
-        prompt_summary: `Fascia: ${ageRange || "4-6"}, Protagonista: ${characterName || "Protagonista"}, Luogo: ${settingName || "Mondo Magico"}`,
+        prompt_summary: `Fascia: ${ageRange || "4-6"}, Protagonista: ${characterName || "Protagonista"}, Luogo: ${settingName || "Mondo Magico"}${resolvedPreciseAge !== undefined ? `, Età precisa: ${resolvedPreciseAge}` : ""}`,
       })
       .select("id")
       .single();
@@ -144,6 +148,7 @@ export async function POST(req: Request) {
       moralLessonTitle: moralLessonTitle || "Amicizia",
       moralLessonDescription:
         moralLessonDescription || "L'importanza di collaborare",
+      preciseAge: resolvedPreciseAge,
     });
 
     // 6. Salvataggio della storia nella tabella stories

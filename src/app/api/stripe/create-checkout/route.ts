@@ -35,7 +35,14 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { type, priceKey, priceId: directPriceId, tier, creditsAmount, contentId } = body;
+    const { type, priceKey, priceId: directPriceId, tier, creditsAmount } = body;
+
+    if (type === "narrative_content") {
+      return NextResponse.json(
+        { error: "I contenuti narrativi possono essere sbloccati esclusivamente con Punti Avventura nel negozio gamification, mai tramite pagamento in denaro o crediti." },
+        { status: 400 }
+      );
+    }
 
     if (type === "addon_child" || priceKey === "addon_child") {
       const currentAddons = family.addon_children_count || 0;
@@ -81,7 +88,6 @@ export async function POST(req: Request) {
 
     if (tier) metadata.plan_tier = tier;
     if (creditsAmount) metadata.credits_amount = String(creditsAmount);
-    if (contentId) metadata.content_id = contentId;
 
     const session = await stripe.checkout.sessions.create({
       customer: customerId,

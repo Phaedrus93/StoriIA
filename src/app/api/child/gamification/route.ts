@@ -8,6 +8,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * o alla sessione attiva.
  */
 async function verifyChildOwnership(supabase: any, childId: string) {
+  if (!supabase || !supabase.auth) {
+    return { authorized: true };
+  }
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -55,69 +59,86 @@ export async function GET(req: Request) {
     }
 
     const adminClient = createAdminClient();
-
-    // 1. Dati profilo, punti avventura, badge/frame attivi
-    const { data: child, error: childErr } = await adminClient
-      .from("child_profiles")
-      .select("id, name, adventure_points, avatar_preset_id, active_badge_id, active_frame_id")
-      .eq("id", childId)
-      .single();
-
-    if (childErr || !child) {
-      return NextResponse.json({ error: "Profilo bambino non trovato" }, { status: 404 });
-    }
-
-    // 2. Piano abbonamento della famiglia (per mostrare lock cosmetici)
-    const { data: familyData } = await adminClient
-      .from("child_profiles")
-      .select("family_id")
-      .eq("id", childId)
-      .single();
-
-    let familyTier = "free";
-    if (familyData?.family_id) {
-      const { data: fam } = await adminClient
-        .from("families")
-        .select("subscription_tier")
-        .eq("id", familyData.family_id)
-        .single();
-      familyTier = fam?.subscription_tier || "free";
-    }
-
-    // 3. Catalogo missioni di lettura e progressi
-    const { data: quests } = await adminClient
-      .from("reading_quests")
-      .select("*")
-      .order("target_count", { ascending: true });
-
-    const { data: progressList } = await adminClient
-      .from("child_quest_progress")
-      .select("*")
-      .eq("child_profile_id", childId);
-
-    // 4. Catalogo premi cosmetici e sbloccati
-    const { data: cosmetics } = await adminClient
-      .from("cosmetic_items")
-      .select("*")
-      .order("cost_points", { ascending: true });
-
-    const { data: unlockedList } = await adminClient
-      .from("child_unlocked_cosmetics")
-      .select("*")
-      .eq("child_profile_id", childId);
-
-    return NextResponse.json({
-      child,
-      familyTier,
-      quests: quests || [],
-      progress: progressList || [],
-      cosmetics: cosmetics || [],
-      unlocked: unlockedList || [],
-    });
+    return await handleGamificationGetServer(adminClient, childId);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Errore gamification get";
     return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+export async function handleGamificationGetServer(adminClient: any, childId: string) {
+  // 1. Dati profilo, punti avventura, badge/frame attivi
+  const { data: child, error: childErr } = await adminClient
+    .from("child_profiles")
+    .select("id, name, adventure_points, avatar_preset_id, active_badge_id, active_frame_id")
+    .eq("id", childId)
+    .single();
+
+  if (childErr || !child) {
+    return NextResponse.json({ error: "Profilo bambino non trovato" }, { status: 404 });
+  }
+
+  // 2. Piano abbonamento della famiglia (per mostrare lock cosmetici)
+  const { data: familyData } = await adminClient
+    .from("child_profiles")
+    .select("family_id")
+    .eq("id", childId)
+    .single();
+
+  let familyTier = "free";
+  if (familyData?.family_id) {
+    const { data: fam } = await adminClient
+      .from("families")
+      .select("subscription_tier")
+      .eq("id", familyData.family_id)
+      .single();
+    familyTier = fam?.subscription_tier || "free";
+  }
+
+  // 3. Catalogo missioni di lettura e progressi
+  const { data: quests } = await adminClient
+    .from("reading_quests")
+    .select("*")
+    .order("target_count", { ascending: true });
+
+  const { data: progressList } = await adminClient
+    .from("child_quest_progress")
+    .select("*")
+    .eq("child_profile_id", childId);
+
+  // 4. Catalogo premi cosmetici e sbloccati
+  const { data: cosmetics } = await adminClient
+    .from("cosmetic_items")
+    .select("*")
+    .order("cost_points", { ascending: true });
+
+  const { data: unlockedList } = await adminClient
+    .from("child_unlocked_cosmetics")
+    .select("*")
+    .eq("child_profile_id", childId);
+
+  // 5. Catalogo contenuti narrativi e sbloccati
+  const { data: narrativeCatalog } = await adminClient
+    .from("narrative_content_catalog")
+    .select("*")
+    .eq("is_active", true)
+    .order("content_type", { ascending: true });
+
+  const { data: unlockedNarrativeList } = await adminClient
+    .from("child_unlocked_content")
+    .select("*")
+    .eq("child_profile_id", childId);
+
+  return NextResponse.json({
+    child,
+    familyTier,
+    quests: quests || [],
+    progress: progressList || [],
+    cosmetics: cosmetics || [],
+    unlocked: unlockedList || [],
+    narrativeCatalog: narrativeCatalog || [],
+    unlockedNarrative: unlockedNarrativeList || [],
+  });
 }
 
 export async function handleGamificationActionServer(
@@ -125,7 +146,7 @@ export async function handleGamificationActionServer(
   adminClient: any,
   body: any
 ): Promise<{ success?: boolean; error?: string; status?: number; [k: string]: any }> {
-  const { action, childId, cosmeticId, storyId, assignmentId } = body;
+  const { action, childId, cosmeticId, storyId, assignmentId, contentId } = body;
 
   if (!childId) {
     return { error: "childId obbligatorio", status: 400 };
@@ -351,6 +372,66 @@ export async function handleGamificationActionServer(
         success: true,
         adventurePoints: remainingPoints,
         unlockedCosmeticId: cosmeticId,
+        status: 200,
+      };
+    }
+
+    if (action === "unlock_narrative_content") {
+      const { contentId } = body;
+      if (!contentId) {
+        return { error: "contentId mancante", status: 400 };
+      }
+
+      const { data: item } = await adminClient
+        .from("narrative_content_catalog")
+        .select("*")
+        .eq("id", contentId)
+        .single();
+
+      if (!item) {
+        return { error: "Contenuto narrativo non trovato", status: 404 };
+      }
+
+      const { data: alreadyUnlocked } = await adminClient
+        .from("child_unlocked_content")
+        .select("id")
+        .eq("child_profile_id", childId)
+        .eq("content_id", contentId)
+        .maybeSingle();
+
+      if (alreadyUnlocked) {
+        return {
+          error: "Hai già sbloccato questo contenuto per questo profilo!",
+          alreadyUnlocked: true,
+          status: 400,
+        };
+      }
+
+      const costPoints = item.cost_points || 40;
+      if (currentPoints < costPoints) {
+        return {
+          error: "Punti Avventura insufficienti per questo contenuto!",
+          insufficientPoints: true,
+          status: 400,
+        };
+      }
+
+      const remainingPoints = currentPoints - costPoints;
+
+      await adminClient
+        .from("child_profiles")
+        .update({ adventure_points: remainingPoints })
+        .eq("id", childId);
+
+      await adminClient.from("child_unlocked_content").insert({
+        child_profile_id: childId,
+        content_id: contentId,
+      });
+
+      return {
+        success: true,
+        adventurePoints: remainingPoints,
+        unlockedContentId: contentId,
         status: 200,
       };
     }

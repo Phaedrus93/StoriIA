@@ -10,6 +10,7 @@ export interface GenerateStoryInput {
   settingDescription: string;
   moralLessonTitle: string;
   moralLessonDescription: string;
+  preciseAge?: number;
 }
 
 /**
@@ -38,6 +39,10 @@ export function buildStoryPrompt(input: GenerateStoryInput): string {
 - TRAMA: Il personaggio affronta una sfida significativa in cui deve dimostrare coraggio o lealtà, integrando la morale in modo naturale.`,
   };
 
+  const preciseAgeInstruction = typeof input.preciseAge === "number"
+    ? `\n- Età esatta del bambino destinatario: ${input.preciseAge} anni. Calibra il vocabolario, la lunghezza delle frasi e la complessità specificamente per un bambino di esattamente ${input.preciseAge} anni (all'interno della fascia ${input.ageRange}).`
+    : "";
+
   return `Sei un autore esperto e premuroso di storie per bambini in lingua italiana.
 Scrivi una storia originale e adatta all'età del bambino basandoti sulle seguenti istruzioni:
 
@@ -54,7 +59,7 @@ Scrivi una storia originale e adatta all'età del bambino basandoti sulle seguen
 - Dettaglio morale: ${input.moralLessonDescription}
 
 === INDICAZIONI SPECIFICHE PER FASCIA D'ETÀ (${input.ageRange} ANNI) ===
-${ageSpecificInstructions[input.ageRange]}
+${ageSpecificInstructions[input.ageRange]}${preciseAgeInstruction}
 
 REGOLE ESSENZIALI:
 1. La storia DEVE essere scritta interamente in italiano corretto ed espressivo.

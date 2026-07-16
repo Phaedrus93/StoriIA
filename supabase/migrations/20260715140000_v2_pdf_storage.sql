@@ -8,9 +8,7 @@ INSERT INTO storage.buckets (id, name, public)
 VALUES ('story-pdfs', 'story-pdfs', false)
 ON CONFLICT (id) DO UPDATE SET public = false;
 
--- 3. Abilitazione e configurazione RLS per storage.objects
-ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
-
+-- 3. Configurazione RLS per storage.objects
 DROP POLICY IF EXISTS "Service role can upload to story-pdfs" ON storage.objects;
 DROP POLICY IF EXISTS "Service role can select from story-pdfs" ON storage.objects;
 DROP POLICY IF EXISTS "Service role can delete from story-pdfs" ON storage.objects;

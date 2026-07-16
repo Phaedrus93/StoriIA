@@ -171,23 +171,6 @@ export async function POST(req: Request) {
             message: "Hai sbloccato 1 profilo bambino aggiuntivo per il tuo account famiglia.",
             actionLink: "/children",
           });
-        } else if (purchaseType === "narrative_content") {
-          const contentId = session.metadata?.content_id;
-          if (contentId) {
-            await adminClient.from("family_unlocked_content").upsert({
-              family_id: familyId,
-              content_id: contentId,
-              unlocked_via: "purchase",
-              stripe_session_id: session.id,
-            }, { onConflict: "family_id,content_id" });
-            await notifyFamily({
-              familyId,
-              category: "activity",
-              title: "Contenuto Narrativo Sbloccato! ✨",
-              message: "Il nuovo tratto/ambientazione è ora disponibile nella creazione delle tue prossime storie.",
-              actionLink: "/stories/new",
-            });
-          }
         }
         break;
       }

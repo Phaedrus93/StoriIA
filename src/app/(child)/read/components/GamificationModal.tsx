@@ -13,6 +13,7 @@ import {
   Shield,
   Zap,
   ChevronRight,
+  Users,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -45,6 +46,20 @@ interface UnlockedCosmetic {
   cosmetic_id: string;
 }
 
+interface NarrativeItem {
+  id: string;
+  name: string;
+  content_type: string;
+  description: string;
+  cost_points?: number;
+  icon_preset: string;
+}
+
+interface UnlockedNarrativeItem {
+  content_id: string;
+  child_profile_id?: string;
+}
+
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface GamificationModalProps {
@@ -55,17 +70,23 @@ interface GamificationModalProps {
   questProgress: QuestProgress[];
   cosmetics: CosmeticItem[];
   unlockedCosmetics: UnlockedCosmetic[];
+  narrativeCatalog?: NarrativeItem[];
+  unlockedNarrative?: UnlockedNarrativeItem[];
   familyTier: string; // 'free' | 'premium' | 'family'
   activeBackdrop: string | null; // active_badge_id
   activeFrame: string | null; // active_frame_id
   childId: string;
+  childrenList?: { id: string; name: string; adventure_points: number }[];
+  onSelectChild?: (childId: string) => void;
   onUnlockCosmetic: (cosmeticId: string) => Promise<void>;
+  onUnlockNarrative?: (contentId: string) => Promise<void>;
   onSetActiveCosmetic: (
     slot: "badge" | "frame",
     cosmeticId: string | null
   ) => Promise<void>;
   onPointsUpdate: (newPoints: number) => void;
   rewardToast: string | null;
+  isChildMode?: boolean;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -103,7 +124,7 @@ function isPlanSufficient(
 
 // ─── Tab types ────────────────────────────────────────────────────────────────
 
-type Tab = "missions" | "shop" | "badges";
+type Tab = "missions" | "shop" | "narrative" | "badges";
 type ShopFilter = "all" | "BADGE" | "AVATAR_FRAME";
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -116,17 +137,26 @@ export default function GamificationModal({
   questProgress,
   cosmetics,
   unlockedCosmetics,
+  narrativeCatalog,
+  unlockedNarrative,
   familyTier,
   activeBackdrop,
   activeFrame,
+  childId,
+  childrenList,
+  onSelectChild,
   onUnlockCosmetic,
+  onUnlockNarrative,
   onSetActiveCosmetic,
   rewardToast,
+  isChildMode,
 }: GamificationModalProps) {
   const [activeTab, setActiveTab] = useState<Tab>("missions");
   const [shopFilter, setShopFilter] = useState<ShopFilter>("all");
 
   if (!isOpen) return null;
+
+  const currentTab = isChildMode && (activeTab === "shop" || activeTab === "narrative") ? "missions" : activeTab;
 
   // ── Derived data ────────────────────────────────────────────────────────────
 
@@ -155,7 +185,7 @@ export default function GamificationModal({
 
   const tabCls = (tab: Tab) =>
     `flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-bold transition-all ${
-      activeTab === tab
+      currentTab === tab
         ? "bg-gradient-to-r from-amber-500/30 to-indigo-500/30 border border-amber-400/50 text-amber-300 shadow-md"
         : "text-slate-400 hover:text-white hover:bg-slate-800/60"
     }`;
@@ -223,10 +253,38 @@ export default function GamificationModal({
     </div>
   );
 
+  const renderChildSelector = () => {
+    if (isChildMode || !childrenList || childrenList.length <= 1) return null;
+    return (
+      <div className="mb-4 p-3 rounded-2xl bg-slate-900/80 border border-slate-800 flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2 text-xs font-bold text-slate-300">
+          <Users className="w-4 h-4 text-indigo-400" />
+          <span>Profilo bambino su cui operare:</span>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          {childrenList.map((ch) => (
+            <button
+              key={ch.id}
+              onClick={() => onSelectChild && onSelectChild(ch.id)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                ch.id === childId
+                  ? "bg-amber-500/20 border border-amber-400/50 text-amber-300 shadow-sm"
+                  : "bg-slate-800/60 text-slate-400 hover:text-white"
+              }`}
+            >
+              {ch.name} ({ch.adventure_points} ★)
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   // ── Render: Shop tab ────────────────────────────────────────────────────────
 
   const renderShop = () => (
     <div className="space-y-4">
+      {renderChildSelector()}
       {/* Inner filter tabs */}
       <div className="flex gap-2 flex-wrap">
         {(["all", "BADGE", "AVATAR_FRAME"] as ShopFilter[]).map((f) => (
@@ -341,6 +399,94 @@ export default function GamificationModal({
           );
         })}
       </div>
+    </div>
+  );
+
+  // ── Render: Narrative Shop tab ──────────────────────────────────────────────
+
+  const renderNarrativeShop = () => (
+    <div className="space-y-4">
+      {renderChildSelector()}
+      <div className="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-200 text-xs leading-relaxed">
+        I contenuti narrativi sbloccati con i Punti Avventura di un bambino diventano immediatamente disponibili per creare storie per <strong>tutti i figli della famiglia</strong>!
+      </div>
+
+      {!narrativeCatalog || narrativeCatalog.length === 0 ? (
+        <div className="text-center text-slate-400 text-sm py-8">
+          Nessun contenuto narrativo disponibile nel catalogo.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {narrativeCatalog.map((item) => {
+            const isUnlocked = unlockedNarrative && unlockedNarrative.some(
+              (u) => u.content_id === item.id
+            );
+            const cost = item.cost_points ?? 40;
+            const canAfford = adventurePoints >= cost;
+
+            return (
+              <div
+                key={item.id}
+                className={`p-4 rounded-2xl border flex flex-col justify-between gap-3 transition-all ${
+                  isUnlocked
+                    ? "bg-emerald-500/10 border-emerald-500/30"
+                    : "bg-slate-900/60 border-slate-800 hover:border-indigo-500/40"
+                }`}
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-3xl select-none leading-none">
+                      {getCosmeticIcon(item.icon_preset)}
+                    </span>
+                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                      <span className="text-[10px] font-bold uppercase text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded">
+                        {item.content_type === "CHARACTER_TRAIT"
+                          ? "Tratto"
+                          : item.content_type === "SETTING_THEME"
+                          ? "Ambientazione"
+                          : "Stile"}
+                      </span>
+                      {!isUnlocked && (
+                        <span className="text-xs font-bold text-amber-300">
+                          {cost} ★
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <h4 className="text-sm font-bold text-white mt-2">{item.name}</h4>
+                  <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                    {item.description}
+                  </p>
+                </div>
+
+                {isUnlocked ? (
+                  <div className="flex items-center gap-1.5 text-emerald-400 text-xs font-semibold pt-2 border-t border-slate-800/60">
+                    <Check className="w-4 h-4 shrink-0" />
+                    <span>Sbloccato per la famiglia</span>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => onUnlockNarrative && onUnlockNarrative(item.id)}
+                    disabled={!canAfford || !onUnlockNarrative}
+                    className={`w-full py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                      canAfford && onUnlockNarrative
+                        ? "bg-gradient-to-r from-amber-500 to-indigo-500 text-white hover:opacity-90 shadow-md shadow-amber-500/10"
+                        : "bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700"
+                    }`}
+                  >
+                    <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                    <span>
+                      {canAfford
+                        ? `Sblocca con ${cost} ★`
+                        : `Punti insufficienti (${cost} ★)`}
+                    </span>
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 
@@ -491,14 +637,26 @@ export default function GamificationModal({
             <Target className="w-4 h-4 shrink-0" />
             <span>Missioni</span>
           </button>
-          <button
-            id="tab-shop"
-            onClick={() => setActiveTab("shop")}
-            className={tabCls("shop")}
-          >
-            <ShoppingBag className="w-4 h-4 shrink-0" />
-            <span>Negozio</span>
-          </button>
+          {!isChildMode && (
+            <>
+              <button
+                id="tab-shop"
+                onClick={() => setActiveTab("shop")}
+                className={tabCls("shop")}
+              >
+                <ShoppingBag className="w-4 h-4 shrink-0" />
+                <span>Negozio Cosmetici</span>
+              </button>
+              <button
+                id="tab-narrative"
+                onClick={() => setActiveTab("narrative")}
+                className={tabCls("narrative")}
+              >
+                <Sparkles className="w-4 h-4 shrink-0" />
+                <span>Contenuti Narrativi</span>
+              </button>
+            </>
+          )}
           <button
             id="tab-badges"
             onClick={() => setActiveTab("badges")}
@@ -511,9 +669,10 @@ export default function GamificationModal({
 
         {/* Tab content */}
         <div className="p-5 flex-1">
-          {activeTab === "missions" && renderMissions()}
-          {activeTab === "shop" && renderShop()}
-          {activeTab === "badges" && renderMyBadges()}
+          {currentTab === "missions" && renderMissions()}
+          {currentTab === "shop" && renderShop()}
+          {currentTab === "narrative" && renderNarrativeShop()}
+          {currentTab === "badges" && renderMyBadges()}
         </div>
 
         {/* Reward toast inside modal (optional, mirrors the external one) */}

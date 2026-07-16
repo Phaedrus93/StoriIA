@@ -20,6 +20,7 @@ import {
 import { getAvatarUrl } from "@/lib/avatars";
 import ConfirmationModal from "@/components/ConfirmationModal";
 import { ChildAvatarWithBadge } from "@/components/ChildAvatarWithBadge";
+import GamificationModal from "@/app/(child)/read/components/GamificationModal";
 
 const TIER_RANK: Record<string, number> = { free: 1, premium: 2, family: 3 };
 
@@ -38,6 +39,11 @@ export default function ChildrenPage() {
   const [cosmeticsMap, setCosmeticsMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [familyId, setFamilyId] = useState<string | null>(null);
+
+  // Stato per il negozio gamification e contenuti
+  const [showGamificationModal, setShowGamificationModal] = useState(false);
+  const [gamificationData, setGamificationData] = useState<any>(null);
+  const [selectedGamificationChildId, setSelectedGamificationChildId] = useState<string>("");
 
   // Stato per la modale di conferma eliminazione
   const [deleteChildId, setDeleteChildId] = useState<string | null>(null);
@@ -187,6 +193,71 @@ export default function ChildrenPage() {
 
   const handleDeleteChild = (id: string) => {
     setDeleteChildId(id);
+  };
+
+  const loadChildGamification = async (childId: string) => {
+    setSelectedGamificationChildId(childId);
+    try {
+      const res = await fetch(`/api/child/gamification?childId=${childId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setGamificationData(data);
+      }
+    } catch (e) {
+      console.error("Errore caricamento gamification:", e);
+    }
+  };
+
+  const handleOpenGamification = (childId?: string) => {
+    const targetId = childId || (children.length > 0 ? children[0].id : "");
+    if (!targetId) return;
+    loadChildGamification(targetId);
+    setShowGamificationModal(true);
+  };
+
+  const handleParentUnlockCosmetic = async (cosmeticId: string) => {
+    if (!selectedGamificationChildId) return;
+    const res = await fetch("/api/child/gamification", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "unlock_cosmetic", childId: selectedGamificationChildId, cosmeticId }),
+    });
+    if (res.ok) {
+      await loadChildGamification(selectedGamificationChildId);
+      loadChildren();
+    } else {
+      const err = await res.json();
+      alert(err.error || "Errore nello sblocco");
+    }
+  };
+
+  const handleParentUnlockNarrative = async (contentId: string) => {
+    if (!selectedGamificationChildId) return;
+    const res = await fetch("/api/child/gamification", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "unlock_narrative_content", childId: selectedGamificationChildId, contentId }),
+    });
+    if (res.ok) {
+      await loadChildGamification(selectedGamificationChildId);
+      loadChildren();
+    } else {
+      const err = await res.json();
+      alert(err.error || "Errore nello sblocco del contenuto narrativo");
+    }
+  };
+
+  const handleParentSetActiveCosmetic = async (slot: "badge" | "frame", cosmeticId: string | null) => {
+    if (!selectedGamificationChildId) return;
+    const res = await fetch("/api/child/gamification", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "set_active_cosmetic", childId: selectedGamificationChildId, slot, cosmeticId }),
+    });
+    if (res.ok) {
+      await loadChildGamification(selectedGamificationChildId);
+      loadChildren();
+    }
   };
 
   return (
@@ -347,18 +418,28 @@ export default function ChildrenPage() {
         {/* Elenco Profili */}
         <div className="lg:col-span-2 space-y-4">
           {/* Banner Gamification info per i genitori */}
-          <div className="glass-card p-5 border-amber-500/30 bg-gradient-to-r from-amber-500/10 to-indigo-500/10">
+          <div className="glass-card p-5 border-amber-500/30 bg-gradient-to-r from-amber-500/10 to-indigo-500/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-start gap-3">
               <Sparkles className="w-6 h-6 text-amber-400 shrink-0 mt-0.5" />
               <div>
                 <h3 className="font-bold text-white text-sm">
-                  Punti Avventura & Gamification
+                  Punti Avventura, Gamification & Contenuti Narrativi
                 </h3>
                 <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                  I bambini guadagnano <strong className="text-amber-300">+15 Punti Avventura</strong> per ogni storia completata, oltre a punti bonus completando le <strong className="text-indigo-300">Missioni di Lettura</strong> nell&apos;area bambino (<code className="text-xs bg-slate-800 px-1.5 py-0.5 rounded">/read</code>). Con i punti possono sbloccare distintivi e cornici nel Negozio Premi!
+                  I bambini guadagnano <strong className="text-amber-300">+15 Punti Avventura</strong> per ogni storia completata, oltre a punti bonus con le <strong className="text-indigo-300">Missioni di Lettura</strong>. Con i punti possono sbloccare badge, cornici e <strong className="text-amber-300">tratti e stili narrativi</strong> per tutta la famiglia!
                 </p>
               </div>
             </div>
+            {children.length > 0 && (
+              <button
+                type="button"
+                onClick={() => handleOpenGamification(children[0].id)}
+                className="btn-primary text-xs shrink-0 flex items-center gap-2 py-2.5 px-4 bg-gradient-to-r from-amber-500 to-indigo-500 hover:opacity-95"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>Apri Negozio & Premi</span>
+              </button>
+            )}
           </div>
 
           {loading ? (
@@ -395,6 +476,15 @@ export default function ChildrenPage() {
 
                   <div className="flex items-center gap-1">
                     <button
+                      type="button"
+                      onClick={() => handleOpenGamification(child.id)}
+                      className="p-2 text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 rounded-xl transition-colors"
+                      title="Negozio Gamification & Contenuti"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => handleStartEdit(child)}
                       className="p-2 text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-xl transition-colors"
                       title="Modifica profilo"
@@ -402,6 +492,7 @@ export default function ChildrenPage() {
                       <Edit2 className="w-4 h-4" />
                     </button>
                     <button
+                      type="button"
                       onClick={() => handleDeleteChild(child.id)}
                       className="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors"
                       title="Elimina profilo"
@@ -425,6 +516,41 @@ export default function ChildrenPage() {
         isLoading={deleting}
         onConfirm={() => deleteChildId && executeDeleteChild(deleteChildId)}
         onClose={() => setDeleteChildId(null)}
+      />
+
+      <GamificationModal
+        isOpen={showGamificationModal && Boolean(gamificationData)}
+        onClose={() => setShowGamificationModal(false)}
+        adventurePoints={gamificationData?.child?.adventure_points || 0}
+        quests={gamificationData?.quests || []}
+        questProgress={gamificationData?.progress || []}
+        cosmetics={gamificationData?.cosmetics || []}
+        unlockedCosmetics={gamificationData?.unlocked || []}
+        narrativeCatalog={gamificationData?.narrativeCatalog || []}
+        unlockedNarrative={gamificationData?.unlockedNarrative || []}
+        familyTier={gamificationData?.familyTier || "free"}
+        activeBackdrop={gamificationData?.child?.active_badge_id || null}
+        activeFrame={gamificationData?.child?.active_frame_id || null}
+        childId={selectedGamificationChildId}
+        childrenList={children.map((ch) => ({
+          id: ch.id,
+          name: ch.name,
+          adventure_points: ch.adventure_points || 0,
+        }))}
+        onSelectChild={loadChildGamification}
+        onUnlockCosmetic={handleParentUnlockCosmetic}
+        onUnlockNarrative={handleParentUnlockNarrative}
+        onSetActiveCosmetic={handleParentSetActiveCosmetic}
+        onPointsUpdate={(pts) => {
+          if (gamificationData?.child) {
+            setGamificationData({
+              ...gamificationData,
+              child: { ...gamificationData.child, adventure_points: pts },
+            });
+          }
+        }}
+        rewardToast={null}
+        isChildMode={false}
       />
     </div>
   );

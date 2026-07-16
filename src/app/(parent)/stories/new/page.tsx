@@ -13,6 +13,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import type { AgeRange } from "@/lib/ai/story-generator";
+import { calculateAgeFromBirthYear, calculateAgeRangeFromBirthYear } from "@/lib/utils/age";
 import { APP_CONFIG } from "@/lib/config";
 
 interface Character {
@@ -30,6 +31,7 @@ interface Setting {
 interface ChildProfile {
   id: string;
   name: string;
+  birth_year?: number;
 }
 
 interface NarrativeContent {
@@ -66,6 +68,7 @@ const DEFAULT_MORALS = [
 
 export default function NewStoryPage() {
   const [ageRange, setAgeRange] = useState<AgeRange>("4-6");
+  const [isManualOverride, setIsManualOverride] = useState(false);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [settings, setSettings] = useState<Setting[]>([]);
   const [children, setChildren] = useState<ChildProfile[]>([]);
@@ -144,11 +147,16 @@ export default function NewStoryPage() {
 
     const { data: childData } = await supabase
       .from("child_profiles")
-      .select("id, name");
+      .select("id, name, birth_year");
     setChildren(childData || []);
 
     if (childData && childData.length > 0) {
       setSelectedChildIds([childData[0].id]);
+      if (typeof childData[0].birth_year === "number") {
+        const suggested = calculateAgeRangeFromBirthYear(childData[0].birth_year);
+        setAgeRange(suggested);
+        setIsManualOverride(false);
+      }
     }
 
     try {
@@ -167,10 +175,36 @@ export default function NewStoryPage() {
   }
 
   const toggleChildSelection = (childId: string) => {
-    if (selectedChildIds.includes(childId)) {
-      setSelectedChildIds(selectedChildIds.filter((id) => id !== childId));
+    const isSelected = selectedChildIds.includes(childId);
+    const newIds = isSelected
+      ? selectedChildIds.filter((id) => id !== childId)
+      : [...selectedChildIds, childId];
+    setSelectedChildIds(newIds);
+
+    if (!isSelected) {
+      const child = children.find((c) => c.id === childId);
+      if (child && typeof child.birth_year === "number") {
+        const suggested = calculateAgeRangeFromBirthYear(child.birth_year);
+        setAgeRange(suggested);
+        setIsManualOverride(false);
+      }
+    }
+  };
+
+  const handleAgeRangeClick = (age: AgeRange) => {
+    setAgeRange(age);
+    const primaryChild = children.find(
+      (c) => selectedChildIds.includes(c.id) && typeof c.birth_year === "number"
+    );
+    if (primaryChild && typeof primaryChild.birth_year === "number") {
+      const suggested = calculateAgeRangeFromBirthYear(primaryChild.birth_year);
+      if (age !== suggested) {
+        setIsManualOverride(true);
+      } else {
+        setIsManualOverride(false);
+      }
     } else {
-      setSelectedChildIds([...selectedChildIds, childId]);
+      setIsManualOverride(false);
     }
   };
 
@@ -183,6 +217,17 @@ export default function NewStoryPage() {
     const selectedChar = characters.find((c) => c.id === selectedCharacterId);
     const selectedSet = settings.find((s) => s.id === selectedSettingId);
     const moral = DEFAULT_MORALS[selectedMoralIndex];
+
+    const primaryChild = children.find(
+      (c) => selectedChildIds.includes(c.id) && typeof c.birth_year === "number"
+    );
+    let preciseAge: number | undefined = undefined;
+    if (primaryChild && typeof primaryChild.birth_year === "number") {
+      const suggested = calculateAgeRangeFromBirthYear(primaryChild.birth_year);
+      if (ageRange === suggested && !isManualOverride) {
+        preciseAge = calculateAgeFromBirthYear(primaryChild.birth_year);
+      }
+    }
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 35000);
@@ -206,6 +251,7 @@ export default function NewStoryPage() {
           moralLessonTitle: moral.title,
           moralLessonDescription: moral.description,
           assignToChildIds: selectedChildIds,
+          preciseAge,
           ...(selectedStyleId
             ? {
                 storyStyleDescription: storyStyles.find(
@@ -348,7 +394,7 @@ export default function NewStoryPage() {
                   <button
                     key={age}
                     type="button"
-                    onClick={() => setAgeRange(age)}
+                    onClick={() => handleAgeRangeClick(age)}
                     className={`p-4 rounded-2xl border text-center transition-all ${
                       active
                         ? "bg-indigo-600/30 border-indigo-500 text-white shadow-lg shadow-indigo-500/20"
