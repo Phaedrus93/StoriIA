@@ -13,17 +13,23 @@ import {
   ChevronRight,
   Clock,
   Download,
+  Eye,
 } from "lucide-react";
 import { paginateText } from "@/lib/reader/paginator";
 import { getAvatarUrl } from "@/lib/avatars";
 import { ChildAvatarWithBadge, getCosmeticIcon } from "@/components/ChildAvatarWithBadge";
 import GamificationModal from "./components/GamificationModal";
+import ReadingAccessibilityModal from "./components/ReadingAccessibilityModal";
 
 interface ChildProfile {
   id: string;
   name: string;
   birth_year?: number;
   avatar_preset_id?: string;
+  night_mode?: boolean;
+  brightness?: number;
+  contrast?: number;
+  font_size?: string;
 }
 
 interface ReadableStory {
@@ -75,6 +81,14 @@ export default function ChildReaderPage() {
   const [activeBadgeId, setActiveBadgeId] = useState<string | null>(null);
   const [activeFrameId, setActiveFrameId] = useState<string | null>(null);
 
+  // Accessibilità e Comfort di Lettura
+  const [readingNightMode, setReadingNightMode] = useState<boolean>(false);
+  const [readingBrightness, setReadingBrightness] = useState<number>(100);
+  const [readingContrast, setReadingContrast] = useState<number>(100);
+  const [readingFontSize, setReadingFontSize] = useState<string>("medium");
+  const [showAccessibilityModal, setShowAccessibilityModal] = useState<boolean>(false);
+  const [isChildModeSession, setIsChildModeSession] = useState<boolean>(true);
+
   const supabase = createClient();
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -86,8 +100,15 @@ export default function ChildReaderPage() {
     if (selectedChildId) {
       loadStoriesForChild(selectedChildId);
       loadGamification(selectedChildId);
+      const found = children.find((c) => c.id === selectedChildId);
+      if (found) {
+        setReadingNightMode(found.night_mode ?? false);
+        setReadingBrightness(found.brightness ?? 100);
+        setReadingContrast(found.contrast ?? 100);
+        setReadingFontSize(found.font_size || "medium");
+      }
     }
-  }, [selectedChildId]);
+  }, [selectedChildId, children]);
 
   async function loadGamification(childId: string) {
     try {
@@ -205,6 +226,8 @@ export default function ChildReaderPage() {
       data: { user },
     } = await supabase.auth.getUser();
 
+    setIsChildModeSession(user?.app_metadata?.is_child_mode === true);
+
     const queryChildId =
       typeof window !== "undefined"
         ? new URLSearchParams(window.location.search).get("childId")
@@ -219,10 +242,10 @@ export default function ChildReaderPage() {
       storedChildId ||
       user?.app_metadata?.active_child_profile_id;
 
-    // 1. Carica i profili bambino disponibili
+    // 1. Carica i profili bambino disponibili con preferenze di accessibilità
     const { data: childList } = await supabase
       .from("child_profiles")
-      .select("id, name, birth_year, avatar_preset_id")
+      .select("id, name, birth_year, avatar_preset_id, night_mode, brightness, contrast, font_size")
       .order("created_at", { ascending: true });
 
     if (childList && childList.length > 0) {
@@ -235,6 +258,11 @@ export default function ChildReaderPage() {
         localStorage.setItem("storiia_active_child_id", targetChildId);
       }
       setSelectedChildId(targetChildId);
+      const targetProfile = childList.find((c) => c.id === targetChildId) || childList[0];
+      setReadingNightMode(targetProfile.night_mode ?? false);
+      setReadingBrightness(targetProfile.brightness ?? 100);
+      setReadingContrast(targetProfile.contrast ?? 100);
+      setReadingFontSize(targetProfile.font_size || "medium");
     } else {
       // Se non ci sono profili, carica comunque le storie generali
       await loadStoriesForChild(null);
@@ -528,6 +556,15 @@ export default function ChildReaderPage() {
 
         <div className="flex items-center gap-3">
           <button
+            onClick={() => setShowAccessibilityModal(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-bold text-indigo-300 hover:text-indigo-200 transition-all shrink-0 shadow-sm"
+            title="Regola Comfort e Accessibilità di Lettura"
+          >
+            <Eye className="w-4 h-4 text-indigo-400" />
+            <span className="hidden sm:inline">Aspetto</span>
+          </button>
+
+          <button
             onClick={() => setShowRewardsModal(true)}
             className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-amber-500/20 to-indigo-500/20 hover:from-amber-500/30 hover:to-indigo-500/30 border border-amber-400/50 text-amber-300 transition-all font-bold text-xs md:text-sm shadow-lg hover:scale-105"
           >
@@ -611,7 +648,24 @@ export default function ChildReaderPage() {
           </h1>
 
           {/* Testo pagina corrente */}
-          <div className="min-h-[300px] p-6 md:p-10 rounded-3xl bg-slate-900/90 border border-slate-800 text-slate-100 text-lg md:text-xl leading-relaxed whitespace-pre-line flex flex-col justify-center">
+          <div
+            className={`min-h-[300px] p-6 md:p-10 rounded-3xl border whitespace-pre-line flex flex-col justify-center transition-all ${
+              readingNightMode
+                ? "bg-black text-amber-100 border-amber-500/30 shadow-inner"
+                : "bg-slate-900/90 text-slate-100 border-slate-800"
+            } ${
+              readingFontSize === "small"
+                ? "text-base md:text-lg leading-normal"
+                : readingFontSize === "large"
+                ? "text-xl md:text-2xl leading-relaxed"
+                : readingFontSize === "xlarge"
+                ? "text-2xl md:text-3xl font-bold leading-loose tracking-wide"
+                : "text-lg md:text-xl leading-relaxed"
+            }`}
+            style={{
+              filter: `brightness(${readingBrightness / 100}) contrast(${readingContrast / 100})`,
+            }}
+          >
             {(() => {
               const text =
                 storyPages.length > 0
@@ -829,6 +883,36 @@ export default function ChildReaderPage() {
           </div>
         </div>
       )}
+
+      <ReadingAccessibilityModal
+        isOpen={showAccessibilityModal}
+        onClose={() => setShowAccessibilityModal(false)}
+        childId={selectedChildId || ""}
+        nightMode={readingNightMode}
+        brightness={readingBrightness}
+        contrast={readingContrast}
+        fontSize={readingFontSize}
+        isChildMode={isChildModeSession}
+        onUpdate={(prefs) => {
+          setReadingNightMode(prefs.nightMode);
+          setReadingBrightness(prefs.brightness);
+          setReadingContrast(prefs.contrast);
+          setReadingFontSize(prefs.fontSize);
+          setChildren((prev) =>
+            prev.map((c) =>
+              c.id === selectedChildId
+                ? {
+                    ...c,
+                    night_mode: prefs.nightMode,
+                    brightness: prefs.brightness,
+                    contrast: prefs.contrast,
+                    font_size: prefs.fontSize,
+                  }
+                : c
+            )
+          );
+        }}
+      />
     </div>
   );
 }

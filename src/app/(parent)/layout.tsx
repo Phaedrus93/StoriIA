@@ -135,7 +135,7 @@ export default function ParentLayout({ children }: { children: React.ReactNode }
     { name: "Personaggi", href: "/library/characters", icon: Sparkles },
     { name: "Ambientazioni", href: "/library/settings", icon: Library },
     { name: "Storie AI", href: "/stories", icon: BookOpen },
-    { name: "Profilo", href: "/profile", icon: UserCog },
+    { name: "Impostazioni", href: "/settings", icon: UserCog },
   ];
 
   return (
