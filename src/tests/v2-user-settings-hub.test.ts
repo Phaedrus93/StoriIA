@@ -212,4 +212,40 @@ describe("V2 Phase 3: Area Impostazioni Utente Unificata (/settings) & Accessibi
     expect((marcoRes.rows[0] as any).brightness).toBe(90);
     expect((marcoRes.rows[0] as any).night_mode).toBe(true);
   });
+
+  it("Test 6: Verifica rifiuto cambio PIN in presenza di PIN già impostato quando il PIN attuale fornito è errato", async () => {
+    await setSession(parentId, false);
+    // 1. Impostiamo un PIN iniziale per la famiglia
+    const initialPin = "1234";
+    const { hashParentPin, verifyParentPin } = await import("@/lib/security/pin");
+    const initialHash = await hashParentPin(initialPin);
+    await db.query(`SELECT public.set_parent_pin_hash('${familyId}', '${initialHash}');`);
+
+    // 2. Verifichiamo che la chiamata con PIN attuale errato ('9999') fallisca il controllo
+    const statusRes = await db.query(`SELECT pin_hash FROM public.get_lockout_status('${familyId}')`);
+    const storedHash = (statusRes.rows[0] as any).pin_hash;
+    const wrongPinMatch = await verifyParentPin("9999", storedHash);
+    expect(wrongPinMatch).toBe(false);
+
+    // 3. Verifichiamo che con il PIN attuale corretto il controllo abbia successo e permetta il cambio
+    const correctPinMatch = await verifyParentPin("1234", storedHash);
+    expect(correctPinMatch).toBe(true);
+
+    // Eseguiamo il cambio al nuovo PIN
+    const newHash = await hashParentPin("5678");
+    await db.query(`SELECT public.set_parent_pin_hash('${familyId}', '${newHash}');`);
+    const newStatusRes = await db.query(`SELECT pin_hash FROM public.get_lockout_status('${familyId}')`);
+    const newStoredHash = (newStatusRes.rows[0] as any).pin_hash;
+    expect(await verifyParentPin("5678", newStoredHash)).toBe(true);
+  });
+
+  it("Test 7: Verifica che la query child_profiles in loadAllData lato genitore restituisca correttamente i figli della famiglia", async () => {
+    await setSession(parentId, false);
+    // Verifichiamo che la query diretta su child_profiles usata in /settings (invece dell'endpoint inesistente /api/family/child-profiles)
+    // restituisca correttamente sia Leo che Marco senza errori di RLS
+    const res = await db.query(`SELECT id, name FROM public.child_profiles WHERE family_id = '${familyId}' ORDER BY created_at ASC, name ASC`);
+    expect(res.rows.length).toBe(2);
+    expect((res.rows[0] as any).name).toBe("Leo");
+    expect((res.rows[1] as any).name).toBe("Marco");
+  });
 });

@@ -14,6 +14,8 @@ import {
   UserCog,
   KeyRound,
   ShieldCheck,
+  Menu,
+  X,
 } from "lucide-react";
 import { hashPinAction } from "@/app/actions/pin";
 import NotificationBell from "@/components/parent/NotificationBell";
@@ -22,6 +24,7 @@ export default function ParentLayout({ children }: { children: React.ReactNode }
   const pathname = usePathname();
   const router = useRouter();
 
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [hasPinConfigured, setHasPinConfigured] = useState<boolean | null>(null);
   const [showPinWizard, setShowPinWizard] = useState(false);
   const [wizardPin, setWizardPin] = useState("");
@@ -173,6 +176,14 @@ export default function ParentLayout({ children }: { children: React.ReactNode }
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="md:hidden p-2 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+              title="Menu Navigazione"
+            >
+              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
+
             <NotificationBell />
 
             {hasPinConfigured === false ? (
@@ -204,6 +215,31 @@ export default function ParentLayout({ children }: { children: React.ReactNode }
           </div>
         </div>
       </header>
+
+      {/* Mobile Navigation Drawer/Menu */}
+      {mobileMenuOpen && (
+        <div className="md:hidden bg-slate-900/95 backdrop-blur-xl border-b border-slate-800 px-4 py-3 space-y-1">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const active = pathname.startsWith(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setMobileMenuOpen(false)}
+                className={`px-4 py-3 rounded-xl text-sm font-medium transition-all flex items-center gap-3 ${
+                  active
+                    ? "bg-indigo-600/20 text-indigo-300 border border-indigo-500/30"
+                    : "text-slate-300 hover:bg-slate-800/60 hover:text-white"
+                }`}
+              >
+                <Icon className="w-5 h-5" />
+                <span>{item.name}</span>
+              </Link>
+            );
+          })}
+        </div>
+      )}
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {children}

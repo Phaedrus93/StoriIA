@@ -53,6 +53,7 @@ function SettingsPageContent() {
   const [updatingBillingProfile, setUpdatingBillingProfile] = useState(false);
 
   // Tab 2: Sicurezza & PIN
+  const [hasPinConfigured, setHasPinConfigured] = useState<boolean | null>(null);
   const [currentPin, setCurrentPin] = useState("");
   const [newPin, setNewPin] = useState("");
   const [confirmNewPin, setConfirmNewPin] = useState("");
@@ -137,19 +138,38 @@ function SettingsPageContent() {
         }
       }
 
-      // Caricamento profili figli per accessibilità
-      const childRes = await fetch("/api/family/child-profiles");
-      if (childRes.ok) {
-        const childJson = await childRes.json();
-        if (childJson.profiles && childJson.profiles.length > 0) {
-          setChildrenList(childJson.profiles);
-          const first = childJson.profiles[0];
-          setSelectedChildId(first.id);
-          setNightMode(first.night_mode || false);
-          setBrightness(first.brightness || 100);
-          setContrast(first.contrast || 100);
-          setFontSize(first.font_size || "medium");
+      // Caricamento status PIN configurato
+      if (data.user) {
+        const { data: famData } = await supabase
+          .from("families")
+          .select("id")
+          .eq("parent_user_id", data.user.id)
+          .single();
+        if (famData) {
+          const { data: statusRows } = await supabase.rpc("get_lockout_status", {
+            p_family_id: famData.id,
+          });
+          const row = statusRows && statusRows.length > 0 ? statusRows[0] : null;
+          setHasPinConfigured(!!(row && row.pin_hash));
+        } else {
+          setHasPinConfigured(false);
         }
+      }
+
+      // Caricamento profili figli per accessibilità
+      const { data: childProfiles } = await supabase
+        .from("child_profiles")
+        .select("*")
+        .order("created_at", { ascending: true });
+
+      if (childProfiles && childProfiles.length > 0) {
+        setChildrenList(childProfiles);
+        const first = childProfiles[0];
+        setSelectedChildId(first.id);
+        setNightMode(first.night_mode || false);
+        setBrightness(first.brightness || 100);
+        setContrast(first.contrast || 100);
+        setFontSize(first.font_size || "medium");
       }
     } catch {
       // Ignore initial fetch errors
@@ -172,6 +192,10 @@ function SettingsPageContent() {
   const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setPasswordStatus(null);
+    if (!currentPassword) {
+      setPasswordStatus({ type: "error", msg: "Inserisci la password attuale per confermare." });
+      return;
+    }
     if (newPassword !== confirmPassword) {
       setPasswordStatus({ type: "error", msg: "Le nuove password non coincidono." });
       return;
@@ -181,6 +205,17 @@ function SettingsPageContent() {
       return;
     }
     setUpdatingPassword(true);
+    if (userEmail && currentPassword) {
+      const { error: signInErr } = await supabase.auth.signInWithPassword({
+        email: userEmail,
+        password: currentPassword,
+      });
+      if (signInErr) {
+        setPasswordStatus({ type: "error", msg: "La password attuale inserita non è corretta." });
+        setUpdatingPassword(false);
+        return;
+      }
+    }
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     setUpdatingPassword(false);
     if (error) {
@@ -226,6 +261,10 @@ function SettingsPageContent() {
   const handleUpdatePin = async (e: React.FormEvent) => {
     e.preventDefault();
     setPinStatus(null);
+    if (hasPinConfigured && !currentPin) {
+      setPinStatus({ type: "error", msg: "Inserisci il PIN attuale per confermare la modifica." });
+      return;
+    }
     if (!/^\d{4}$/.test(newPin)) {
       setPinStatus({ type: "error", msg: "Il nuovo PIN deve essere composto esattamente da 4 cifre numeriche." });
       return;
@@ -236,6 +275,18 @@ function SettingsPageContent() {
     }
     setUpdatingPin(true);
     try {
+      if (hasPinConfigured && currentPin) {
+        const resVerify = await fetch("/api/child-mode/verify-pin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pin: currentPin }),
+        });
+        if (!resVerify.ok) {
+          setPinStatus({ type: "error", msg: "Il PIN attuale inserito non è corretto." });
+          setUpdatingPin(false);
+          return;
+        }
+      }
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) {
         throw new Error("Utente non autenticato.");
@@ -256,6 +307,7 @@ function SettingsPageContent() {
       if (rpcError) {
         throw new Error(rpcError.message);
       }
+      setHasPinConfigured(true);
       setPinStatus({ type: "success", msg: "PIN di sicurezza impostato ed aggiornato con successo!" });
       setCurrentPin("");
       setNewPin("");
@@ -458,6 +510,17 @@ function SettingsPageContent() {
                   </div>
                 )}
                 <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Password Attuale</label>
+                  <input
+                    type="password"
+                    required
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    placeholder="La tua password corrente"
+                    className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white focus:border-indigo-500 outline-none"
+                  />
+                </div>
+                <div>
                   <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Nuova Password</label>
                   <input
                     type="password"
@@ -605,6 +668,20 @@ function SettingsPageContent() {
               )}
 
               <form onSubmit={handleUpdatePin} className="space-y-4 max-w-md">
+                {hasPinConfigured && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase mb-1">PIN Attuale</label>
+                    <input
+                      type="password"
+                      maxLength={6}
+                      required
+                      value={currentPin}
+                      onChange={(e) => setCurrentPin(e.target.value.replace(/\D/g, ""))}
+                      placeholder="Il tuo PIN attuale"
+                      className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-center font-mono text-lg tracking-widest focus:border-indigo-500 outline-none"
+                    />
+                  </div>
+                )}
                 <div>
                   <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Nuovo PIN (4 cifre)</label>
                   <input

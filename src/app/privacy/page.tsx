@@ -92,7 +92,7 @@ export default function PrivacyPage() {
                 proprio <strong>Diritto alla Portabilità</strong> (scaricando
                 l&apos;archivio JSON completo della famiglia) e il{" "}
                 <strong>Diritto alla Cancellazione Definitiva (Oblio)</strong>{" "}
-                dalla pagina Profilo e Sicurezza dell&apos;Area Genitori. L&apos;eliminazione
+                dalla pagina Impostazioni dell&apos;Area Genitori. L&apos;eliminazione
                 comporta la rimozione fisica immediata e irreversibile di ogni
                 dato personale e di tutti i profili figlio dal database.
               </p>
