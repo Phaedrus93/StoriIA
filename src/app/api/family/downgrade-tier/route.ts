@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PLAN_LIMITS, SubscriptionTier } from "@/lib/config";
 import { enforceSuspensionOnDowngrade } from "@/lib/billing-utils";
+import { getSubscriptionPlan } from "@/lib/plans";
 
 /**
  * POST /api/family/downgrade-tier
@@ -25,7 +26,8 @@ export async function downgradeFamilyTierServer(
     family: 3,
   };
 
-  if (!newTier || !(newTier in PLAN_LIMITS)) {
+  const planData = await getSubscriptionPlan(newTier, adminClient);
+  if (!newTier || !planData || !TIER_RANK[newTier]) {
     return { error: "Piano non valido", status: 400 };
   }
 

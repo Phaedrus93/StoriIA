@@ -33,6 +33,7 @@ function BillingContent() {
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [addonCount, setAddonCount] = useState<number>(0);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [dbPlans, setDbPlans] = useState<any[]>([]);
 
   useEffect(() => {
     loadBillingStatus();
@@ -48,6 +49,7 @@ function BillingContent() {
         setStatus(data.status || "active");
         setCreditsBalance(data.creditsBalance || 0);
         setLedger(data.ledger || []);
+        if (data.plans) setDbPlans(data.plans);
       }
       const limitRes = await fetch("/api/family/check-child-limit");
       if (limitRes.ok) {
@@ -83,17 +85,23 @@ function BillingContent() {
     }
   };
 
+  const getPlanData = (key: string) => dbPlans.find((p) => p.tier === key);
+
+  const freeDb = getPlanData("free");
+  const premDb = getPlanData("premium");
+  const famDb = getPlanData("family");
+
   const plans = [
     {
       key: "free",
-      name: "Free",
+      name: freeDb?.name || "Free",
       icon: null,
-      price: "€0",
+      price: freeDb?.priceMonthlyCents ? `€${(freeDb.priceMonthlyCents / 100).toFixed(2)}` : "€0",
       period: "sempre",
       color: "indigo",
       features: [
-        "1 profilo bambino",
-        "5 crediti una tantum all'iscrizione",
+        `${freeDb?.maxChildren || 1} profilo bambino`,
+        `${freeDb?.welcomeCredits || 5} crediti una tantum all'iscrizione`,
         "Solo morali base gratuite",
         "Accesso a storie preset gratuite",
       ],
@@ -101,16 +109,16 @@ function BillingContent() {
     },
     {
       key: "premium",
-      name: "Premium",
+      name: premDb?.name || "Premium",
       icon: Sparkles,
-      price: "€9.99",
+      price: premDb?.priceMonthlyCents ? `€${(premDb.priceMonthlyCents / 100).toFixed(2)}` : "€9.99",
       period: "mese",
       color: "indigo",
       features: [
-        "Fino a 3 bambini",
-        "30 crediti AI inclusi ogni mese",
+        `Fino a ${premDb?.maxChildren || 3} bambini`,
+        `${premDb?.monthlyCredits || 30} crediti AI inclusi ogni mese`,
         "Prezzo crediti extra scontato",
-        "Tutte le morali sbloccate",
+        premDb?.allMorals ? "Tutte le morali sbloccate" : "Solo morali base",
         "Accesso cosmetici Premium",
       ],
       priceKey: "premium_monthly",
@@ -118,17 +126,17 @@ function BillingContent() {
     },
     {
       key: "family",
-      name: "Family",
+      name: famDb?.name || "Family",
       icon: Zap,
-      price: "€16.99",
+      price: famDb?.priceMonthlyCents ? `€${(famDb.priceMonthlyCents / 100).toFixed(2)}` : "€16.99",
       period: "mese",
       color: "purple",
       features: [
-        "Fino a 6 bambini",
-        "80 crediti AI inclusi ogni mese",
+        `Fino a ${famDb?.maxChildren || 6} bambini`,
+        `${famDb?.monthlyCredits || 80} crediti AI inclusi ogni mese`,
         "Miglior prezzo credito extra",
         "Funzione regalo prioritaria",
-        "Accesso cosmetici Family",
+        famDb?.allMorals ? "Tutte le morali sbloccate" : "Solo morali base",
       ],
       priceKey: "family_monthly",
       tier: "family",

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PLAN_LIMITS, SubscriptionTier } from "@/lib/config";
+import { getSubscriptionPlan } from "@/lib/plans";
 
 /**
  * Funzione core dell'endpoint /api/child/reactivate.
@@ -44,7 +45,8 @@ export async function reactivateChildProfileServer(
 
   // 2. Calcolo limite massimo e profili attivi attuali
   const tier = (family.subscription_tier || "free") as SubscriptionTier;
-  const baseLimit = PLAN_LIMITS[tier]?.maxChildren || 1;
+  const planData = await getSubscriptionPlan(tier, client);
+  const baseLimit = planData.maxChildren;
   const maxAllowed = baseLimit + (family.addon_children_count || 0);
 
   const { count: activeCount } = await client

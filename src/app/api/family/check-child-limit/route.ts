@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { PLAN_LIMITS, type SubscriptionTier } from "@/lib/config";
+import { getSubscriptionPlan } from "@/lib/plans";
 
 /**
  * GET /api/family/check-child-limit
@@ -28,7 +29,7 @@ export async function GET() {
 
     const tier = (family.subscription_tier || "free") as SubscriptionTier;
     const addonCount = family.addon_children_count || 0;
-    const planLimit = PLAN_LIMITS[tier] ?? PLAN_LIMITS.free;
+    const planLimit = await getSubscriptionPlan(tier, supabase);
     const maxAllowed = planLimit.maxChildren + addonCount;
 
     const { count: currentCount } = await supabase

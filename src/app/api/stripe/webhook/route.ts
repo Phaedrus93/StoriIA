@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PLAN_LIMITS, APP_CONFIG, type SubscriptionTier } from "@/lib/config";
+import { getSubscriptionPlan } from "@/lib/plans";
 import { notifyFamily } from "@/lib/notifications";
 import { enforceSuspensionOnDowngrade } from "@/lib/billing-utils";
 
@@ -117,7 +118,8 @@ export async function POST(req: Request) {
           }
         } else if (purchaseType === "subscription") {
           const newTier = (session.metadata?.plan_tier || "premium") as SubscriptionTier;
-          const monthlyCredits = PLAN_LIMITS[newTier]?.monthlyCredits ?? 0;
+          const planData = await getSubscriptionPlan(newTier, adminClient);
+          const monthlyCredits = planData.monthlyCredits;
           const customerId = typeof session.customer === "string" ? session.customer : session.customer?.id || null;
           const subscriptionId = typeof session.subscription === "string" ? session.subscription : session.subscription?.id || null;
 
@@ -153,11 +155,14 @@ export async function POST(req: Request) {
           });
         } else if (purchaseType === "addon_child") {
           const { data: fam } = await adminClient
-            .from("families").select("addon_children_count").eq("id", familyId).single();
+            .from("families").select("addon_children_count, subscription_tier").eq("id", familyId).single();
           const currentAddons = fam?.addon_children_count || 0;
-          if (currentAddons >= APP_CONFIG.addonChildren.maxPerFamily) {
+          const currentTier = (fam?.subscription_tier || "free") as SubscriptionTier;
+          const planData = await getSubscriptionPlan(currentTier, adminClient);
+          const addonMax = planData.addonMaxPerFamily || APP_CONFIG.addonChildren.maxPerFamily;
+          if (currentAddons >= addonMax) {
             return NextResponse.json(
-              { error: `Tetto massimo di profili add-on (${APP_CONFIG.addonChildren.maxPerFamily}) già raggiunto per questa famiglia.` },
+              { error: `Tetto massimo di profili add-on (${addonMax}) già raggiunto per questa famiglia.` },
               { status: 400 }
             );
           }
@@ -187,7 +192,8 @@ export async function POST(req: Request) {
             .single();
           if (fam) {
             const tier = (fam.subscription_tier || "free") as SubscriptionTier;
-            const monthlyCredits = PLAN_LIMITS[tier]?.monthlyCredits ?? 0;
+            const planData = await getSubscriptionPlan(tier, adminClient);
+            const monthlyCredits = planData.monthlyCredits;
             const updates: Record<string, any> = {
               subscription_status: "active",
             };

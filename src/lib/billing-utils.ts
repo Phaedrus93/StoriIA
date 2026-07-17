@@ -1,4 +1,5 @@
 import { PLAN_LIMITS, SubscriptionTier } from "@/lib/config";
+import { getSubscriptionPlan } from "@/lib/plans";
 
 /**
  * Sospende i profili bambino eccedenti quando la famiglia scende di tier (o cancella la subscription).
@@ -8,9 +9,10 @@ import { PLAN_LIMITS, SubscriptionTier } from "@/lib/config";
 export async function enforceSuspensionOnDowngrade(
   adminClient: any,
   familyId: string,
-  newTier: SubscriptionTier
+  newTier: SubscriptionTier | string
 ): Promise<{ suspendedCount: number }> {
-  const maxAllowed = PLAN_LIMITS[newTier]?.maxChildren || 1;
+  const planData = await getSubscriptionPlan(newTier, adminClient);
+  const maxAllowed = planData.maxChildren;
 
   // Verifica anche eventuali addon_children_count
   const { data: family } = await adminClient

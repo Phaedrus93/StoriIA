@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getAllSubscriptionPlans } from "@/lib/plans";
 
 export async function GET() {
   try {
@@ -32,6 +33,8 @@ export async function GET() {
       .order("created_at", { ascending: false })
       .limit(10);
 
+    const plans = await getAllSubscriptionPlans(supabase);
+
     return NextResponse.json({
       family,
       tier: family.subscription_tier || "free",
@@ -41,6 +44,7 @@ export async function GET() {
       pendingAddonCount: family.pending_addon_children_count ?? null,
       stripeSubscriptionId: family.stripe_subscription_id || null,
       ledger: ledger || [],
+      plans,
     }, {
       headers: {
         "Cache-Control": "no-store, max-age=0",
