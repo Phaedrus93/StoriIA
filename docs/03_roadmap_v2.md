@@ -51,8 +51,8 @@ esistenti.
 
 ```
 Implementa il pannello admin (Fase 4 del PRD v2): gestione preset
-avatar, missioni/badge, testi fissi, morali predefinite, storie preset,
-parametri di configurazione applicativa. Accesso ristretto al solo
+avatar, missioni/badge/cornici, testi fissi, morali predefinite, storie preset,
+parametri di configurazione applicativa, parametri piani abbonamenti, limiti utilizzo. Accesso ristretto al solo
 utente amministratore (per ora identificato per user id o email
 specifico, non serve un sistema di ruoli complesso). NESSUNA API key
 (Gemini, Stripe, service role Supabase) deve essere visibile o
@@ -115,7 +115,7 @@ coincidano.
 
 ```
 Implementa la Fase 10 del PRD v2: vista unificata storie generate +
-preset con filtri per fascia d'età, bambino assegnato, stato lettura,
+preset con filtri per fascia d'età, bambino assegnato, titolo, stato lettura,
 fonte. Distinta chiaramente dalla libreria Personaggi/Ambientazioni.
 ```
 
