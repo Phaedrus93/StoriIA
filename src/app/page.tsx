@@ -1,7 +1,11 @@
 import React from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { getAllSubscriptionPlans } from "@/lib/plans";
 import HomeHeaderNav from "./HomeHeaderNav";
+import HomeHowItWorks from "@/components/home/HomeHowItWorks";
+import HomePricingSection from "@/components/home/HomePricingSection";
+import HomeFaqSection from "@/components/home/HomeFaqSection";
 import {
   Sparkles,
   BookOpen,
@@ -19,10 +23,14 @@ export default async function HomePage() {
     data: { user },
   } = await supabase.auth.getUser();
 
+  const isAuthenticated = !!user;
+  const plans = await getAllSubscriptionPlans(supabase);
+
   return (
     <div className="min-h-screen bg-slate-950 text-white relative overflow-hidden flex flex-col justify-between">
       {/* Sfondo con bagliori dinamici Glassmorphism */}
       <div className="absolute top-0 left-1/4 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl pointer-events-none -z-10 animate-pulse" />
+      <div className="absolute top-1/3 right-10 w-96 h-96 bg-purple-600/15 rounded-full blur-3xl pointer-events-none -z-10" />
       <div className="absolute bottom-10 right-1/4 w-96 h-96 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none -z-10" />
 
       {/* Intestazione principale */}
@@ -41,11 +49,11 @@ export default async function HomePage() {
           </div>
         </div>
 
-        <HomeHeaderNav isAuthenticated={!!user} />
+        <HomeHeaderNav isAuthenticated={isAuthenticated} />
       </header>
 
       {/* Sezione Hero Principale */}
-      <main className="max-w-6xl mx-auto px-6 py-12 md:py-20 space-y-16">
+      <main className="max-w-6xl mx-auto px-6 py-12 md:py-20 space-y-24">
         <div className="text-center space-y-6 max-w-3xl mx-auto">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 text-xs font-semibold">
             <Sparkles className="w-4 h-4 text-amber-400 animate-spin" />
@@ -60,7 +68,7 @@ export default async function HomePage() {
           </h1>
 
           <p className="text-slate-400 text-base md:text-lg leading-relaxed">
-            Un'esperienza educativa e protetta per la famiglia: inventa personaggi, scegli lezioni morali e regala ai tuoi piccoli una libreria magica e sicura.
+            Un&apos;esperienza educativa e protetta per la famiglia: inventa personaggi, scegli lezioni morali e regala ai tuoi piccoli una libreria magica e sicura.
           </p>
 
           {/* Pulsanti Azione Principali */}
@@ -85,7 +93,6 @@ export default async function HomePage() {
 
         {/* Griglia Accesso Rapido Moduli StoriIA */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Card 1: Dashboard e Archivio */}
           <Link
             href="/dashboard"
             className="glass-card p-7 hover:border-indigo-500/50 transition-all transform hover:-translate-y-1.5 group flex flex-col justify-between"
@@ -107,7 +114,6 @@ export default async function HomePage() {
             </div>
           </Link>
 
-          {/* Card 2: Laboratorio Personaggi */}
           <Link
             href="/library/characters"
             className="glass-card p-7 hover:border-purple-500/50 transition-all transform hover:-translate-y-1.5 group flex flex-col justify-between"
@@ -129,7 +135,6 @@ export default async function HomePage() {
             </div>
           </Link>
 
-          {/* Card 3: Sicurezza Famiglia */}
           <Link
             href="/children"
             className="glass-card p-7 hover:border-emerald-500/50 transition-all transform hover:-translate-y-1.5 group flex flex-col justify-between"
@@ -152,10 +157,19 @@ export default async function HomePage() {
           </Link>
         </div>
 
-        {/* Banner Sicurezza e Conformità */}
+        {/* 1. Sezione "Come Funziona" */}
+        <HomeHowItWorks />
+
+        {/* 2. Sezione "Prezzi e Piani Sincronizzati" */}
+        <HomePricingSection plans={plans} isAuthenticated={isAuthenticated} />
+
+        {/* 3. Sezione "FAQ Sicurezza e Tutela Minori" */}
+        <HomeFaqSection />
+
+        {/* Banner Sicurezza e Conformità finale */}
         <div className="glass-card p-6 md:p-8 border-indigo-500/20 flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center text-indigo-400 flex-shrink-0">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center text-indigo-400 shrink-0">
               <Users className="w-6 h-6" />
             </div>
             <div>

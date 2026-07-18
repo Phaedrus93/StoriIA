@@ -44,11 +44,29 @@ export default function ParentLayout({ children }: { children: React.ReactNode }
     } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { data: fam } = await supabase
+    let { data: fam } = await supabase
       .from("families")
       .select("id")
       .eq("parent_user_id", user.id)
       .single();
+
+    if (!fam) {
+      // Garanzia auto-creazione / Account Linking per login social se non ancora creata:
+      await supabase
+        .from("families")
+        .upsert(
+          { parent_user_id: user.id },
+          { onConflict: "parent_user_id", ignoreDuplicates: true }
+        );
+
+      const { data: newFam } = await supabase
+        .from("families")
+        .select("id")
+        .eq("parent_user_id", user.id)
+        .single();
+
+      fam = newFam;
+    }
 
     if (fam) {
       const { data: statusRows } = await supabase.rpc("get_lockout_status", {
@@ -94,11 +112,20 @@ export default function ParentLayout({ children }: { children: React.ReactNode }
         .single();
 
       if (!fam) {
-        const { data: fallbackFam } = await supabase
+        await supabase
+          .from("families")
+          .upsert(
+            { parent_user_id: user.id },
+            { onConflict: "parent_user_id", ignoreDuplicates: true }
+          );
+
+        const { data: createdFam } = await supabase
           .from("families")
           .select("id")
+          .eq("parent_user_id", user.id)
           .single();
-        fam = fallbackFam;
+
+        fam = createdFam;
       }
 
       if (!fam) throw new Error("Famiglia non trovata per l'utente.");
