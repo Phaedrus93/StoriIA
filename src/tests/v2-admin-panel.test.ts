@@ -8,7 +8,7 @@ import { GET as getPlansRoute, PUT as putPlansRoute } from "@/app/api/admin/subs
 import { PUT as putAppConfigRoute } from "@/app/api/admin/app-config/route";
 
 // Variabili globali per mock server e auth
-let currentMockUser: { id: string; email: string; user_metadata?: Record<string, any> } | null = null;
+let currentMockUser: { id: string; email: string; user_metadata?: Record<string, any>; app_metadata?: Record<string, any> } | null = null;
 let db: PGlite;
 
 const adminId = "a1111111-1111-1111-1111-111111111111";
@@ -189,6 +189,8 @@ describe("V2 Phase 4: Admin Panel, Subscription Plans & Centralized App Config",
     const sqlAdmin = fs.readFileSync(adminMigrationPath, "utf-8");
     await db.exec(sqlAdmin);
 
+    process.env.ADMIN_EMAIL = "admin@storiia.com";
+
     await db.exec(`
       INSERT INTO auth.users (id, email) VALUES ('${adminId}', 'admin@storiia.com');
       INSERT INTO auth.users (id, email) VALUES ('${normalParentId}', 'parent@storiia.com');
@@ -199,7 +201,7 @@ describe("V2 Phase 4: Admin Panel, Subscription Plans & Centralized App Config",
     await db.close();
   });
 
-  it("1. Controllo privilegi checkAdminPrivileges: rifiuta utente normale e autorizza admin", async () => {
+  it("1. Controllo privilegi checkAdminPrivileges: rifiuta utente normale/user_metadata e autorizza admin per email/app_metadata", async () => {
     // Utente normale
     currentMockUser = { id: normalParentId, email: "parent@storiia.com", user_metadata: { role: "parent" } };
     const mockClientNorm: any = {
@@ -216,13 +218,21 @@ describe("V2 Phase 4: Admin Panel, Subscription Plans & Centralized App Config",
     const check2 = await checkAdminPrivileges(mockClientAdmin);
     expect(check2.isAdmin).toBe(true);
 
-    // Utente admin per metadata
-    currentMockUser = { id: normalParentId, email: "other@storiia.com", user_metadata: { is_admin: true } };
+    // Utente admin per app_metadata (impostato via service role)
+    currentMockUser = { id: normalParentId, email: "other@storiia.com", app_metadata: { is_admin: true } };
     const mockClientMeta: any = {
       auth: { getUser: async () => ({ data: { user: currentMockUser }, error: null }) },
     };
     const check3 = await checkAdminPrivileges(mockClientMeta);
     expect(check3.isAdmin).toBe(true);
+
+    // Verifica ESPLICITA: un utente che imposta autonomamente user_metadata.is_admin = true NON deve ottenere privilegi admin
+    currentMockUser = { id: normalParentId, email: "other@storiia.com", user_metadata: { is_admin: true } };
+    const mockClientUserMeta: any = {
+      auth: { getUser: async () => ({ data: { user: currentMockUser }, error: null }) },
+    };
+    const check4 = await checkAdminPrivileges(mockClientUserMeta);
+    expect(check4.isAdmin).toBe(false);
   });
 
   it("2. Operazioni di scrittura sui Piani Abbonamento (PUT /api/admin/subscription-plans) con createAdminClient e rifiuto 403", async () => {

@@ -115,19 +115,21 @@ export async function notifyFamily(options: NotifyFamilyOptions): Promise<{
               });
 
               if (resendRes.ok) {
+                const maskedEmail = recipientEmail.includes("@") ? `${recipientEmail.split("@")[0].slice(0, 3)}***@${recipientEmail.split("@")[1]}` : "masked***@domain";
                 emailSent = true;
-                emailLog = `Email inviata con successo via Resend a ${recipientEmail}`;
+                emailLog = `Email inviata con successo via Resend a ${maskedEmail}`;
               } else {
                 const errJson = await resendRes.json();
-                console.error("[notifications.ts] Errore Resend:", errJson);
+                console.error("[notifications.ts] Errore Resend:", errJson?.message || errJson?.error || "errore invio");
               }
             } else {
               // Sandbox Email Logger (sviluppo / test locale)
+              const maskedEmail = recipientEmail.includes("@") ? `${recipientEmail.split("@")[0].slice(0, 3)}***@${recipientEmail.split("@")[1]}` : "masked***@domain";
               emailSent = true;
-              emailLog = `[EMAIL SANDBOX] A: ${recipientEmail} | Oggetto: "${subject}"`;
+              emailLog = `[EMAIL SANDBOX] A: ${maskedEmail} | Oggetto: "${subject}"`;
               console.log("\n=======================================================");
               console.log(`📧 [EMAIL SANDBOX NOTIFICATION LOG]`);
-              console.log(`Destinatario: ${recipientEmail}`);
+              console.log(`Destinatario: ${maskedEmail}`);
               console.log(`Categoria:    ${category.toUpperCase()}`);
               console.log(`Oggetto:      ${subject}`);
               console.log(`Messaggio:    ${message}`);
@@ -138,7 +140,7 @@ export async function notifyFamily(options: NotifyFamilyOptions): Promise<{
         }
       }
     } catch (e) {
-      console.error("[notifications.ts] Eccezione durante la gestione dell'email:", e);
+      console.error("[notifications.ts] Eccezione durante la gestione dell'email:", e instanceof Error ? e.message : "errore sconosciuto");
     }
   }
 

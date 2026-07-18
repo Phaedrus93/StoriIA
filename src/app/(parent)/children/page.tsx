@@ -204,7 +204,7 @@ export default function ChildrenPage() {
         setGamificationData(data);
       }
     } catch (e) {
-      console.error("Errore caricamento gamification:", e);
+      console.error("Errore caricamento gamification:", e instanceof Error ? e.message : "errore sconosciuto");
     }
   };
 

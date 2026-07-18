@@ -54,7 +54,7 @@ export default function RegisterPage() {
         });
 
       if (familyError && !familyError.message.includes("duplicate")) {
-        console.error("Errore creazione record famiglia:", familyError);
+        console.error("Errore creazione record famiglia:", familyError.message || familyError.code);
       }
 
       router.push("/dashboard");

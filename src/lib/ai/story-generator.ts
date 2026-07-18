@@ -152,7 +152,7 @@ export async function moderateTextWithAI(text: string): Promise<{
     return { safe: true };
   } catch (err) {
     // REGOLA FAIL-CLOSED: se il servizio AI fallisce per errore di rete, timeout o quota, blocca con errore di servizio
-    console.error("[moderateTextWithAI] Errore servizio di moderazione:", err);
+    console.error("[moderateTextWithAI] Errore servizio di moderazione:", err instanceof Error ? err.message : "errore sconosciuto");
     return {
       safe: false,
       error: true,

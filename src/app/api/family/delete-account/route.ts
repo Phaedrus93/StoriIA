@@ -41,7 +41,7 @@ export async function DELETE() {
       } catch (stripeErr) {
         console.error(
           "[delete-account] Errore cancellazione abbonamento Stripe (procedo con GDPR delete):",
-          stripeErr
+          stripeErr instanceof Error ? stripeErr.message : "errore sconosciuto"
         );
       }
     }
