@@ -63,6 +63,7 @@ export default function AdminPage() {
           { id: "stories", label: "Storie Preset", icon: FileText },
           { id: "texts", label: "Testi Fissi (Copy)", icon: MessageSquare },
           { id: "config", label: "Parametri App & AI", icon: Settings },
+          { id: "reports", label: "Segnalazioni", icon: AlertTriangle },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -91,6 +92,7 @@ export default function AdminPage() {
       {activeTab === "stories" && <PresetStoriesTab showToast={showToast} />}
       {activeTab === "texts" && <FixedTextsTab showToast={showToast} />}
       {activeTab === "config" && <AppConfigTab showToast={showToast} />}
+      {activeTab === "reports" && <ContentReportsTab showToast={showToast} />}
     </div>
   );
 }
@@ -1173,3 +1175,154 @@ function AppConfigTab({ showToast }: { showToast: (msg: string, type?: "success"
     </div>
   );
 }
+
+/* ==============================================================================
+   TAB 8: CONTENT REPORTS (SEGNALAZIONI CONTENUTO)
+   ============================================================================== */
+function ContentReportsTab({ showToast }: { showToast: (msg: string, type?: "success" | "error") => void }) {
+  const [reports, setReports] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadReports();
+  }, []);
+
+  async function loadReports() {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/content-reports");
+      const data = await res.json();
+      if (data.reports) setReports(data.reports);
+    } catch {
+      showToast("Errore durante il caricamento delle segnalazioni", "error");
+    }
+    setLoading(false);
+  }
+
+  const handleUpdateStatus = async (id: string, newStatus: string) => {
+    try {
+      const res = await fetch("/api/admin/content-reports", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, status: newStatus }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(`Stato segnalazione aggiornato in ${newStatus}`);
+        loadReports();
+      } else {
+        showToast(data.error || "Errore aggiornamento", "error");
+      }
+    } catch {
+      showToast("Errore di rete", "error");
+    }
+  };
+
+  const getCategoryLabel = (cat: string) => {
+    const map: Record<string, string> = {
+      inappropriate_theme: "Tema spaventoso/inadatto",
+      bad_language: "Linguaggio improprio/violento",
+      moral_inconsistency: "Morale incoerente",
+      technical_defect: "Difetto tecnico/tronco",
+      other: "Altro",
+    };
+    return map[cat] || cat;
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-base font-bold text-white flex items-center gap-2">
+          <AlertTriangle className="w-5 h-5 text-amber-400" /> Segnalazioni Ricevute
+        </h2>
+        <button onClick={loadReports} className="btn-secondary py-1.5 px-3 text-xs">
+          Aggiorna
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="text-center py-12 text-slate-400 text-sm">Caricamento segnalazioni...</div>
+      ) : reports.length === 0 ? (
+        <div className="glass-card p-8 text-center text-slate-400 text-sm">
+          Nessuna segnalazione presente nel database.
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {reports.map((r) => {
+            const storyText = r.stories?.generated_text || "Testo non disponibile";
+            const storyTitle = storyText.split("\n")[0]?.replace(/^#\s*/, "") || "Storia";
+            const excerpt = storyText.slice(0, 200) + (storyText.length > 200 ? "..." : "");
+
+            return (
+              <div key={r.id} className="glass-card p-5 space-y-4 border-slate-800">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800">
+                  <div>
+                    <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                      r.status === "pending"
+                        ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                        : r.status === "reviewed"
+                        ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                        : "bg-slate-800 text-slate-400 border border-slate-700"
+                    }`}>
+                      {r.status === "pending" ? "In Attesa" : r.status === "reviewed" ? "Esaminata" : "Archiviata"}
+                    </span>
+                    <span className="ml-3 text-xs font-bold text-amber-400">{getCategoryLabel(r.reason_category)}</span>
+                  </div>
+                  <span className="text-[11px] text-slate-400 font-mono">
+                    ID: {r.id.slice(0, 8)}... • {new Date(r.created_at).toLocaleString("it-IT")}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                  <div className="space-y-1 bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+                    <div className="font-bold text-slate-300 text-[11px] uppercase tracking-wider">Dettagli Segnalazione</div>
+                    <div className="text-slate-400"><strong>Motivo:</strong> {getCategoryLabel(r.reason_category)}</div>
+                    {r.details && (
+                      <div className="text-slate-300 mt-1 italic">&ldquo;{r.details}&rdquo;</div>
+                    )}
+                    <div className="text-slate-500 text-[10px] pt-1">Famiglia ID: {r.reported_by_family_id}</div>
+                  </div>
+
+                  <div className="space-y-1 bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+                    <div className="font-bold text-slate-300 text-[11px] uppercase tracking-wider">Estratto Storia (Età: {r.stories?.target_age_range || "N/A"})</div>
+                    <div className="font-bold text-indigo-300">{storyTitle}</div>
+                    <div className="text-slate-400 text-[11px] line-clamp-3 mt-1 leading-relaxed">{excerpt}</div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800/80">
+                  {r.status !== "reviewed" && (
+                    <button
+                      onClick={() => handleUpdateStatus(r.id, "reviewed")}
+                      className="px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-300 text-xs font-semibold transition-colors flex items-center gap-1"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      Segna come Esaminata
+                    </button>
+                  )}
+                  {r.status !== "dismissed" && (
+                    <button
+                      onClick={() => handleUpdateStatus(r.id, "dismissed")}
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors"
+                    >
+                      Archivia (Dismiss)
+                    </button>
+                  )}
+                  {r.status !== "pending" && (
+                    <button
+                      onClick={() => handleUpdateStatus(r.id, "pending")}
+                      className="px-3 py-1.5 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/30 text-amber-300 text-xs transition-colors"
+                    >
+                      Rimetti in Attesa
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+

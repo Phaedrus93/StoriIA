@@ -12,7 +12,9 @@ import {
   Sparkles,
   Plus,
   Download,
+  AlertTriangle,
 } from "lucide-react";
+import ContentReportModal from "@/components/stories/ContentReportModal";
 
 interface ChildProfile {
   id: string;
@@ -41,6 +43,7 @@ export default function StoriesArchivePage() {
   const [children, setChildren] = useState<ChildProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [storyToDelete, setStoryToDelete] = useState<Story | null>(null);
+  const [storyToReport, setStoryToReport] = useState<Story | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [loadingPdfId, setLoadingPdfId] = useState<string | null>(null);
 
@@ -273,6 +276,13 @@ export default function StoriesArchivePage() {
                         </>
                       )}
                     </button>
+                    <button
+                      onClick={() => setStoryToReport(st)}
+                      className="p-2 rounded-xl text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 transition-colors"
+                      title="Segnala contenuto problematico"
+                    >
+                      <AlertTriangle className="w-4 h-4" />
+                    </button>
                     {st.source !== "preset" && (
                       <button
                         onClick={() => handleDeleteStory(st)}
@@ -372,6 +382,15 @@ export default function StoriesArchivePage() {
             </div>
           </div>
         </div>
+      )}
+
+      {storyToReport && (
+        <ContentReportModal
+          isOpen={!!storyToReport}
+          onClose={() => setStoryToReport(null)}
+          storyId={storyToReport.id}
+          storyTitle={storyToReport.generated_text.split("\n")[0]?.replace(/^#\s*/, "") || "Storia Senza Titolo"}
+        />
       )}
     </div>
   );
