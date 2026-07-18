@@ -116,6 +116,30 @@ export async function POST(req: Request) {
               actionLink: "/billing",
             });
           }
+        } else if (purchaseType === "gift_code") {
+          const giftCodeId = session.metadata?.gift_code_id;
+          const giftCodeText = session.metadata?.gift_code || "Codice Regalo";
+          const giftType = session.metadata?.gift_type || "credits";
+          const amountOrTier = session.metadata?.amount_or_tier || "10";
+
+          if (giftCodeId) {
+            await adminClient
+              .from("gift_codes")
+              .update({
+                status: "active",
+                stripe_session_id: session.id,
+              })
+              .eq("id", giftCodeId);
+
+            const giftDesc = giftType === "credits" ? `${amountOrTier} crediti AI` : `1 mese di abbonamento ${amountOrTier.toUpperCase()}`;
+            await notifyFamily({
+              familyId,
+              category: "billing",
+              title: "Codice Regalo Attivato! 🎁",
+              message: `Il tuo acquisto del codice regalo (${giftDesc}) è stato completato con successo. Codice da condividere: ${giftCodeText}`,
+              actionLink: "/billing",
+            });
+          }
         } else if (purchaseType === "subscription") {
           const newTier = (session.metadata?.plan_tier || "premium") as SubscriptionTier;
           const planData = await getSubscriptionPlan(newTier, adminClient);

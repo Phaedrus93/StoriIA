@@ -12,6 +12,9 @@ import {
   PlusCircle,
   AlertCircle,
   Users,
+  Gift,
+  Copy,
+  CheckCircle2,
 } from "lucide-react";
 
 interface LedgerEntry {
@@ -20,6 +23,16 @@ interface LedgerEntry {
   transaction_type: string;
   description: string;
   created_at: string;
+}
+
+interface GiftCodeEntry {
+  id: string;
+  code: string;
+  type: string;
+  amount_or_tier: string;
+  status: string;
+  created_at: string;
+  redeemed_at?: string;
 }
 
 function BillingContent() {
@@ -34,6 +47,13 @@ function BillingContent() {
   const [addonCount, setAddonCount] = useState<number>(0);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [dbPlans, setDbPlans] = useState<any[]>([]);
+  const [giftSubscriptionExpiresAt, setGiftSubscriptionExpiresAt] = useState<string | null>(null);
+
+  const [giftCodeInput, setGiftCodeInput] = useState("");
+  const [giftRedeemLoading, setGiftRedeemLoading] = useState(false);
+  const [giftRedeemMsg, setGiftRedeemMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [purchasedGiftCodes, setPurchasedGiftCodes] = useState<GiftCodeEntry[]>([]);
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
   useEffect(() => {
     loadBillingStatus();
@@ -50,15 +70,56 @@ function BillingContent() {
         setCreditsBalance(data.creditsBalance || 0);
         setLedger(data.ledger || []);
         if (data.plans) setDbPlans(data.plans);
+        setGiftSubscriptionExpiresAt(data.giftSubscriptionExpiresAt || null);
       }
       const limitRes = await fetch("/api/family/check-child-limit");
       if (limitRes.ok) {
         const lim = await limitRes.json();
         setAddonCount(lim.addonCount || 0);
       }
+      const giftRes = await fetch("/api/billing/gift-codes");
+      if (giftRes.ok) {
+        const giftData = await giftRes.json();
+        setPurchasedGiftCodes(giftData.purchasedCodes || []);
+      }
     } catch { /* ignora */ }
     setLoading(false);
   }
+
+  const handleRedeemGift = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!giftCodeInput.trim()) return;
+    setGiftRedeemLoading(true);
+    setGiftRedeemMsg(null);
+    try {
+      const res = await fetch("/api/billing/redeem-gift", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: giftCodeInput }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setGiftRedeemMsg({
+          type: "success",
+          text: `Codice ${data.code} riscattato con successo! ${data.type === "credits" ? `+${data.amountOrTier} crediti aggiunti.` : `Abbonamento ${data.amountOrTier.toUpperCase()} attivato per 1 mese.`}`,
+        });
+        setGiftCodeInput("");
+        loadBillingStatus();
+      } else {
+        setGiftRedeemMsg({ type: "error", text: data.error || "Errore durante il riscatto del codice" });
+      }
+    } catch {
+      setGiftRedeemMsg({ type: "error", text: "Errore di connessione al server." });
+    } finally {
+      setGiftRedeemLoading(false);
+    }
+  };
+
+  const copyToClipboard = (code: string) => {
+    navigator.clipboard.writeText(code);
+    setCopiedCode(code);
+    setTimeout(() => setCopiedCode(null), 2500);
+  };
 
   const handleStripeCheckout = async (
     type: string,
@@ -257,6 +318,52 @@ function BillingContent() {
             </div>
           </div>
 
+          {/* Riscatta codice regalo */}
+          <div className="glass-card p-6 border-indigo-500/40 bg-gradient-to-r from-indigo-900/30 to-purple-900/30">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-base font-bold text-white flex items-center gap-2">
+                  <Gift className="w-5 h-5 text-purple-400" />
+                  <span>Hai un codice regalo?</span>
+                </h2>
+                <p className="text-xs text-slate-300 mt-1">
+                  Inserisci qui il codice per ricevere subito crediti extra o attivare 1 mese di abbonamento.
+                </p>
+                {giftSubscriptionExpiresAt && new Date(giftSubscriptionExpiresAt) > new Date() && (
+                  <p className="text-xs text-emerald-300 mt-1.5 font-semibold">
+                    🎁 Regalo abbonamento attivo fino al {new Date(giftSubscriptionExpiresAt).toLocaleDateString("it-IT")}
+                  </p>
+                )}
+              </div>
+              <form onSubmit={handleRedeemGift} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 max-w-md w-full">
+                <input
+                  type="text"
+                  placeholder="GIFT-XXXX-XXXX-XXXX"
+                  value={giftCodeInput}
+                  onChange={(e) => setGiftCodeInput(e.target.value.toUpperCase())}
+                  className="flex-1 px-3.5 py-2 rounded-xl bg-slate-900/80 border border-slate-700 text-white font-mono text-sm placeholder:text-slate-500 focus:outline-none focus:border-purple-500 transition"
+                />
+                <button
+                  type="submit"
+                  disabled={giftRedeemLoading || !giftCodeInput.trim()}
+                  className="btn-primary py-2 px-5 text-xs font-bold whitespace-nowrap bg-purple-600 hover:bg-purple-500 border-purple-400/40 disabled:opacity-50"
+                >
+                  {giftRedeemLoading ? "Riscatto..." : "Riscatto"}
+                </button>
+              </form>
+            </div>
+            {giftRedeemMsg && (
+              <div className={`mt-3 p-3 rounded-xl text-xs flex items-center gap-2 border ${
+                giftRedeemMsg.type === "success"
+                  ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300"
+                  : "bg-rose-500/15 border-rose-500/30 text-rose-300"
+              }`}>
+                {giftRedeemMsg.type === "success" ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
+                <span>{giftRedeemMsg.text}</span>
+              </div>
+            )}
+          </div>
+
           {/* Piani */}
           <div>
             <h2 className="text-lg font-bold text-white mb-4">Piani Abbonamento</h2>
@@ -353,6 +460,98 @@ function BillingContent() {
                 </button>
               </div>
             </div>
+          </div>
+
+          {/* Acquisto e storico codici regalo */}
+          <div>
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <Gift className="w-5 h-5 text-purple-400" />
+              <span>Regala StoriIA ad amici o familiari</span>
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              {[
+                { name: "Pacchetto 10 Crediti", price: "€4.99", desc: "10 favole AI da donare", priceKey: "credits_10", type: "credits", amountOrTier: "10" },
+                { name: "Pacchetto 25 Crediti", price: "€9.99", desc: "25 favole AI da donare", priceKey: "credits_25", type: "credits", amountOrTier: "25" },
+                { name: "1 Mese Premium", price: "€9.99", desc: "1 mese di piano Premium", priceKey: "premium_monthly", type: "subscription", amountOrTier: "premium" },
+                { name: "1 Mese Family", price: "€14.99", desc: "1 mese di piano Family", priceKey: "family_monthly", type: "subscription", amountOrTier: "family" },
+              ].map((item) => (
+                <div key={item.name} className="glass-card p-4 flex flex-col justify-between space-y-3 border-purple-500/20 hover:border-purple-500/40 transition bg-gradient-to-b from-purple-950/20 to-slate-900/60">
+                  <div>
+                    <h3 className="text-sm font-bold text-purple-300">{item.name}</h3>
+                    <p className="text-xl font-extrabold text-white mt-1">{item.price}</p>
+                    <p className="text-xs text-slate-400 mt-1">{item.desc}</p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!!actionLoading}
+                    onClick={() => handleStripeCheckout("gift_code", item.priceKey, { giftType: item.type, amountOrTier: item.amountOrTier })}
+                    className="btn-secondary text-xs w-full text-purple-300 border-purple-500/40 hover:bg-purple-500/20 py-2"
+                  >
+                    {actionLoading === `gift_code_${item.priceKey}` ? "Reindirizzamento..." : "Acquista Regalo"}
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {purchasedGiftCodes.length > 0 && (
+              <div className="glass-card overflow-hidden">
+                <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-white">I tuoi codici regalo acquistati</h3>
+                  <span className="text-xs text-slate-400">Condividi il codice con chi desideri</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider">
+                        <th className="py-3 px-4">Codice</th>
+                        <th className="py-3 px-4">Pacchetto / Piano</th>
+                        <th className="py-3 px-4">Stato</th>
+                        <th className="py-3 px-4">Acquistato il</th>
+                        <th className="py-3 px-4 text-right">Azione</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 text-slate-300">
+                      {purchasedGiftCodes.map((gc) => (
+                        <tr key={gc.id} className="hover:bg-slate-900/40">
+                          <td className="py-3 px-4 font-mono font-bold text-purple-300 tracking-wider">
+                            {gc.code}
+                          </td>
+                          <td className="py-3 px-4">
+                            {gc.type === "credits" ? `${gc.amount_or_tier} crediti` : `1 mese ${gc.amount_or_tier.toUpperCase()}`}
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                              gc.status === "active"
+                                ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                                : gc.status === "redeemed"
+                                ? "bg-slate-700 text-slate-300"
+                                : "bg-amber-500/20 text-amber-300"
+                            }`}>
+                              {gc.status === "active" ? "Pronto" : gc.status === "redeemed" ? "Riscattato" : gc.status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 whitespace-nowrap text-slate-400">
+                            {new Date(gc.created_at).toLocaleDateString("it-IT")}
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            {gc.status === "active" && (
+                              <button
+                                type="button"
+                                onClick={() => copyToClipboard(gc.code)}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/30 font-semibold transition"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                                {copiedCode === gc.code ? "Copiato!" : "Copia Codice"}
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Ledger */}

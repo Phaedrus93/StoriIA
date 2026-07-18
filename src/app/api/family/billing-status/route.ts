@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getAllSubscriptionPlans } from "@/lib/plans";
+import { checkAndExpireGiftSubscription } from "@/lib/billing-utils";
 
 export async function GET() {
   try {
@@ -13,9 +15,9 @@ export async function GET() {
       return NextResponse.json({ error: "Non autorizzato" }, { status: 401 });
     }
 
-    const { data: family, error: famErr } = await supabase
+    let { data: family, error: famErr } = await supabase
       .from("families")
-      .select("id, subscription_tier, subscription_status, credits_balance, addon_children_count, pending_addon_children_count, stripe_subscription_id, parent_user_id")
+      .select("id, subscription_tier, subscription_status, credits_balance, addon_children_count, pending_addon_children_count, stripe_subscription_id, parent_user_id, gift_subscription_expires_at, pre_gift_tier")
       .eq("parent_user_id", user.id)
       .single();
 
@@ -24,6 +26,17 @@ export async function GET() {
         { error: "Famiglia non trovata" },
         { status: 404 }
       );
+    }
+
+    const adminClient = createAdminClient();
+    const { expired } = await checkAndExpireGiftSubscription(adminClient, family.id, family);
+    if (expired) {
+      const { data: updatedFam } = await supabase
+        .from("families")
+        .select("id, subscription_tier, subscription_status, credits_balance, addon_children_count, pending_addon_children_count, stripe_subscription_id, parent_user_id, gift_subscription_expires_at, pre_gift_tier")
+        .eq("id", family.id)
+        .single();
+      if (updatedFam) family = updatedFam;
     }
 
     const { data: ledger } = await supabase
@@ -43,6 +56,7 @@ export async function GET() {
       addonCount: family.addon_children_count || 0,
       pendingAddonCount: family.pending_addon_children_count ?? null,
       stripeSubscriptionId: family.stripe_subscription_id || null,
+      giftSubscriptionExpiresAt: family.gift_subscription_expires_at || null,
       ledger: ledger || [],
       plans,
     }, {

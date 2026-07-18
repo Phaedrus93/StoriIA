@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { checkAndExpireGiftSubscription } from "@/lib/billing-utils";
 import {
   isDailyRateLimitExceeded,
   generateStoryWithGemini,
@@ -28,10 +30,9 @@ export async function POST(req: Request) {
     }
 
     // 2. Ottieni la famiglia del genitore
-    // 2. Ottieni la famiglia del genitore
-    const { data: family, error: famErr } = await supabase
+    let { data: family, error: famErr } = await supabase
       .from("families")
-      .select("id, subscription_status, credits_balance")
+      .select("id, subscription_status, credits_balance, gift_subscription_expires_at, pre_gift_tier")
       .eq("parent_user_id", user.id)
       .single();
 
@@ -40,6 +41,17 @@ export async function POST(req: Request) {
         { error: "Famiglia non trovata per questo account." },
         { status: 404 }
       );
+    }
+
+    const adminClient = createAdminClient();
+    const { expired } = await checkAndExpireGiftSubscription(adminClient, family.id, family);
+    if (expired) {
+      const { data: updatedFam } = await supabase
+        .from("families")
+        .select("id, subscription_status, credits_balance, gift_subscription_expires_at, pre_gift_tier")
+        .eq("id", family.id)
+        .single();
+      if (updatedFam) family = updatedFam;
     }
 
     // Verifica abbonamento non sospeso (frozen per mancato pagamento)

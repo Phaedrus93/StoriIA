@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import crypto from "crypto";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { APP_CONFIG } from "@/lib/config";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "sk_test_placeholder", {
@@ -35,7 +37,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { type, priceKey, priceId: directPriceId, tier, creditsAmount } = body;
+    const { type, priceKey, priceId: directPriceId, tier, creditsAmount, giftType: reqGiftType, amountOrTier: reqAmountOrTier } = body;
 
     if (type === "narrative_content") {
       return NextResponse.json(
@@ -88,6 +90,51 @@ export async function POST(req: Request) {
 
     if (tier) metadata.plan_tier = tier;
     if (creditsAmount) metadata.credits_amount = String(creditsAmount);
+
+    if (type === "gift_code") {
+      let giftType = reqGiftType;
+      let amountOrTier = reqAmountOrTier;
+
+      if (!giftType || !amountOrTier) {
+        if (priceKey === "credits_10") { giftType = "credits"; amountOrTier = "10"; }
+        else if (priceKey === "credits_25") { giftType = "credits"; amountOrTier = "25"; }
+        else if (priceKey === "premium_monthly") { giftType = "subscription"; amountOrTier = "premium"; }
+        else if (priceKey === "family_monthly") { giftType = "subscription"; amountOrTier = "family"; }
+        else {
+          return NextResponse.json({ error: "Tipo o valore di regalo non specificato o non valido." }, { status: 400 });
+        }
+      }
+
+      const adminClient = createAdminClient();
+      let secureCode = "";
+      for (let i = 0; i < 5; i++) {
+        const randHex = crypto.randomBytes(6).toString("hex").toUpperCase();
+        secureCode = `GIFT-${randHex.slice(0, 4)}-${randHex.slice(4, 8)}-${randHex.slice(8, 12)}`;
+        const { data: existing } = await adminClient.from("gift_codes").select("id").eq("code", secureCode).single();
+        if (!existing) break;
+      }
+
+      const { data: giftRow, error: giftErr } = await adminClient
+        .from("gift_codes")
+        .insert({
+          code: secureCode,
+          type: giftType,
+          amount_or_tier: amountOrTier,
+          purchased_by_family_id: family.id,
+          status: "pending",
+        })
+        .select("*")
+        .single();
+
+      if (giftErr || !giftRow) {
+        return NextResponse.json({ error: "Errore durante la creazione del record regalo" }, { status: 500 });
+      }
+
+      metadata.gift_code_id = giftRow.id;
+      metadata.gift_code = giftRow.code;
+      metadata.gift_type = giftRow.type;
+      metadata.amount_or_tier = giftRow.amount_or_tier;
+    }
 
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
