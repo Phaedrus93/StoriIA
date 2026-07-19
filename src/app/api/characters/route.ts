@@ -26,6 +26,12 @@ export async function POST(req: Request) {
     if (!name || !name.trim()) {
       return NextResponse.json({ error: "Il nome del personaggio è obbligatorio." }, { status: 400 });
     }
+    if (name.trim().length > 50) {
+      return NextResponse.json({ error: "Il nome del personaggio supera il limite massimo di 50 caratteri." }, { status: 400 });
+    }
+    if (traits && traits.trim().length > 300) {
+      return NextResponse.json({ error: "I tratti del personaggio superano il limite massimo di 300 caratteri." }, { status: 400 });
+    }
 
     // 1. Recupero famiglia
     const { data: family, error: famErr } = await supabase

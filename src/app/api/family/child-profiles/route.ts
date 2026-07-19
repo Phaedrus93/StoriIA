@@ -16,7 +16,8 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { name, birth_year, avatar_preset_id } = body;
+    const { name, birth_year, avatar_preset_id, gender } = body;
+    const childGender = gender && ["neutral", "boy", "girl"].includes(gender) ? gender : "neutral";
 
     if (!name || typeof name !== "string" || !name.trim()) {
       return NextResponse.json({ error: "Il nome del bambino è obbligatorio." }, { status: 400 });
@@ -52,6 +53,7 @@ export async function POST(req: Request) {
         family_id: familyId,
         name: name.trim(),
         birth_year: birth_year,
+        gender: childGender,
         avatar_preset_id: avatar_preset_id || null,
       })
       .select("*")
@@ -82,7 +84,8 @@ export async function PUT(req: Request) {
     }
 
     const body = await req.json();
-    const { id, name, birth_year, avatar_preset_id } = body;
+    const { id, name, birth_year, avatar_preset_id, gender } = body;
+    const childGender = gender && ["neutral", "boy", "girl"].includes(gender) ? gender : undefined;
 
     if (!id) {
       return NextResponse.json({ error: "ID profilo mancante." }, { status: 400 });
@@ -96,13 +99,18 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: "L'anno di nascita è obbligatorio e deve essere un anno valido." }, { status: 400 });
     }
 
+    const updatePayload: Record<string, any> = {
+      name: name.trim(),
+      birth_year: birth_year,
+      avatar_preset_id: avatar_preset_id || null,
+    };
+    if (childGender !== undefined) {
+      updatePayload.gender = childGender;
+    }
+
     const { data: updated, error: updErr } = await supabase
       .from("child_profiles")
-      .update({
-        name: name.trim(),
-        birth_year: birth_year,
-        avatar_preset_id: avatar_preset_id || null,
-      })
+      .update(updatePayload)
       .eq("id", id)
       .select("*")
       .single();

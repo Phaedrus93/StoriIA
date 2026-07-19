@@ -49,10 +49,13 @@ EXECUTE FUNCTION public.init_family_security();
 
 -- 2. Tabella AVATAR_PRESETS
 CREATE TABLE IF NOT EXISTS public.avatar_presets (
-  id TEXT PRIMARY KEY,
+  id TEXT PRIMARY KEY DEFAULT ('avatar-' || gen_random_uuid()::text),
   name TEXT NOT NULL,
   image_url TEXT NOT NULL,
-  is_free BOOLEAN NOT NULL DEFAULT true
+  gender TEXT NOT NULL DEFAULT 'neutral' CHECK (gender IN ('neutral', 'boy', 'girl')),
+  is_free BOOLEAN NOT NULL DEFAULT true,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  display_order INTEGER NOT NULL DEFAULT 0
 );
 
 -- 3. Tabella CHILD_PROFILES
@@ -61,6 +64,7 @@ CREATE TABLE IF NOT EXISTS public.child_profiles (
   family_id UUID NOT NULL REFERENCES public.families(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   birth_year INTEGER,
+  gender TEXT NOT NULL DEFAULT 'neutral' CHECK (gender IN ('neutral', 'boy', 'girl')),
   avatar_preset_id TEXT REFERENCES public.avatar_presets(id) ON DELETE SET NULL,
   is_suspended BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

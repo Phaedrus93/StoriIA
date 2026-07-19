@@ -42,8 +42,9 @@ export async function POST(req: Request) {
     const { data, error: dbErr } = await adminClient
       .from("avatar_presets")
       .insert({
+        id: body.id || `avatar-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         name: body.name,
-        image_url: body.image_url || body.imageUrl,
+        image_url: body.image_url || body.imageUrl || "/avatars/explorer.svg",
         gender: body.gender || "neutral",
         is_active: body.is_active !== undefined ? body.is_active : true,
         display_order: body.display_order ?? body.displayOrder ?? 0,

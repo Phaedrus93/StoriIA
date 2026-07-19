@@ -96,6 +96,26 @@ export async function POST(req: Request) {
 
     const resolvedPreciseAge = typeof preciseAge === "number" ? preciseAge : typeof precise_age === "number" ? precise_age : undefined;
 
+    // Controllo limiti di lunghezza sui campi verso il prompt AI
+    if (characterName && characterName.length > 50) {
+      return NextResponse.json({ error: "Il nome del personaggio supera il limite massimo di 50 caratteri." }, { status: 400 });
+    }
+    if (characterTraits && characterTraits.length > 300) {
+      return NextResponse.json({ error: "I tratti del personaggio superano il limite massimo di 300 caratteri." }, { status: 400 });
+    }
+    if (settingName && settingName.length > 50) {
+      return NextResponse.json({ error: "Il nome dell'ambientazione supera il limite massimo di 50 caratteri." }, { status: 400 });
+    }
+    if (settingDescription && settingDescription.length > 300) {
+      return NextResponse.json({ error: "La descrizione dell'ambientazione supera il limite massimo di 300 caratteri." }, { status: 400 });
+    }
+    if (moralLessonTitle && moralLessonTitle.length > 50) {
+      return NextResponse.json({ error: "Il titolo dell'insegnamento supera il limite massimo di 50 caratteri." }, { status: 400 });
+    }
+    if (moralLessonDescription && moralLessonDescription.length > 300) {
+      return NextResponse.json({ error: "La descrizione dell'insegnamento supera il limite massimo di 300 caratteri." }, { status: 400 });
+    }
+
     // 3. Controllo Soft Rate Limit (max 20 storie al giorno per famiglia)
     const today = new Date().toISOString().split("T")[0];
     const { count } = await supabase

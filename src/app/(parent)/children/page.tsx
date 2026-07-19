@@ -17,7 +17,7 @@ import {
   Plus,
   ShieldCheck,
 } from "lucide-react";
-import { getAvatarUrl } from "@/lib/avatars";
+import { getAvatarUrl, registerDynamicAvatarPresets } from "@/lib/avatars";
 import ConfirmationModal from "@/components/ConfirmationModal";
 import { ChildAvatarWithBadge } from "@/components/ChildAvatarWithBadge";
 import GamificationModal from "@/app/(child)/read/components/GamificationModal";
@@ -28,6 +28,7 @@ interface ChildProfile {
   id: string;
   name: string;
   birth_year?: number;
+  gender?: string;
   avatar_preset_id?: string;
   adventure_points?: number;
   active_badge_id?: string | null;
@@ -39,6 +40,9 @@ export default function ChildrenPage() {
   const [cosmeticsMap, setCosmeticsMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [familyId, setFamilyId] = useState<string | null>(null);
+
+  // Preset avatar dinamici dal database (tutti gli attivi)
+  const [avatarPresets, setAvatarPresets] = useState<any[]>(APP_CONFIG.defaultAvatarPresets);
 
   // Stato per il negozio gamification e contenuti
   const [showGamificationModal, setShowGamificationModal] = useState(false);
@@ -59,6 +63,7 @@ export default function ChildrenPage() {
   const [editingChildId, setEditingChildId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [birthYear, setBirthYear] = useState("");
+  const [gender, setGender] = useState("neutral");
   const [selectedAvatar, setSelectedAvatar] = useState<string>(APP_CONFIG.defaultAvatarPresets[0].id);
   const [isCreating, setIsCreating] = useState(false);
 
@@ -87,6 +92,22 @@ export default function ChildrenPage() {
     const { data: familyData } = await supabase.from("families").select("id").single();
     if (familyData) setFamilyId(familyData.id);
 
+    // Carichiamo anche i preset avatar attivi dal DB
+    let presetsList = APP_CONFIG.defaultAvatarPresets;
+    try {
+      const resPresets = await fetch("/api/family/avatar-presets");
+      if (resPresets.ok) {
+        const pData = await resPresets.json();
+        if (pData?.presets && pData.presets.length > 0) {
+          presetsList = pData.presets;
+          registerDynamicAvatarPresets(presetsList);
+        }
+      }
+    } catch {
+      // fallback su defaultAvatarPresets
+    }
+    setAvatarPresets(presetsList);
+
     const [{ data }, { data: cosmData }] = await Promise.all([
       supabase.from("child_profiles").select("*").order("created_at", { ascending: true }),
       supabase.from("cosmetic_items").select("id, icon_preset"),
@@ -111,7 +132,9 @@ export default function ChildrenPage() {
     setEditingChildId(child.id);
     setName(child.name);
     setBirthYear(child.birth_year ? child.birth_year.toString() : "");
-    setSelectedAvatar(child.avatar_preset_id || APP_CONFIG.defaultAvatarPresets[0].id);
+    const cGender = child.gender || "neutral";
+    setGender(cGender);
+    setSelectedAvatar(child.avatar_preset_id || avatarPresets[0]?.id || APP_CONFIG.defaultAvatarPresets[0].id);
     setErrorMessage(null);
   };
 
@@ -119,7 +142,8 @@ export default function ChildrenPage() {
     setEditingChildId(null);
     setName("");
     setBirthYear("");
-    setSelectedAvatar(APP_CONFIG.defaultAvatarPresets[0].id);
+    setGender("neutral");
+    setSelectedAvatar(avatarPresets[0]?.id || APP_CONFIG.defaultAvatarPresets[0].id);
     setErrorMessage(null);
   };
 
@@ -149,6 +173,7 @@ export default function ChildrenPage() {
             id: editingChildId,
             name: name.trim(),
             birth_year: parsedYear,
+            gender: gender,
             avatar_preset_id: selectedAvatar,
           }),
         });
@@ -162,6 +187,7 @@ export default function ChildrenPage() {
           body: JSON.stringify({
             name: name.trim(),
             birth_year: parsedYear,
+            gender: gender,
             avatar_preset_id: selectedAvatar,
           }),
         });
@@ -169,6 +195,7 @@ export default function ChildrenPage() {
         if (!res.ok) throw new Error(data.error || "Impossibile salvare il profilo.");
         setName("");
         setBirthYear("");
+        setGender("neutral");
       }
       loadChildren();
     } catch (err: unknown) {
@@ -370,10 +397,52 @@ export default function ChildrenPage() {
 
             <div>
               <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                Genere / Sesso
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: "neutral", label: "🧒 Neutro" },
+                  { id: "boy", label: "👦 Maschio" },
+                  { id: "girl", label: "👧 Femmina" },
+                ].map((g) => (
+                  <button
+                    key={g.id}
+                    type="button"
+                    onClick={() => {
+                      setGender(g.id);
+                      // Se l'avatar selezionato non è compatibile con il nuovo genere, selezioniamo il primo valido
+                      const valid = avatarPresets.filter(
+                        (a) => !a.gender || a.gender === "neutral" || a.gender === g.id
+                      );
+                      if (valid.length > 0 && !valid.some((v) => v.id === selectedAvatar)) {
+                        setSelectedAvatar(valid[0].id);
+                      }
+                    }}
+                    className={`py-2 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center transition-all ${
+                      gender === g.id
+                        ? "border-indigo-500 bg-indigo-500/20 text-white shadow-md shadow-indigo-500/20 ring-1 ring-indigo-500/50"
+                        : "border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700 hover:text-slate-300"
+                    }`}
+                  >
+                    {g.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
                 Scegli Avatar Gratuito
               </label>
-              <div className="grid grid-cols-3 gap-2.5">
-                {APP_CONFIG.defaultAvatarPresets.map((avatar) => (
+              <div className="grid grid-cols-3 gap-2.5 max-h-56 overflow-y-auto p-1">
+                {(avatarPresets.filter(
+                  (a) => !a.gender || a.gender === "neutral" || a.gender === gender
+                ).length > 0
+                  ? avatarPresets.filter(
+                      (a) => !a.gender || a.gender === "neutral" || a.gender === gender
+                    )
+                  : avatarPresets
+                ).map((avatar) => (
                   <button
                     key={avatar.id}
                     type="button"
@@ -464,7 +533,12 @@ export default function ChildrenPage() {
                       size="md"
                     />
                     <div>
-                      <h3 className="font-bold text-white">{child.name}</h3>
+                      <h3 className="font-bold text-white flex items-center gap-1.5">
+                        <span>{child.name}</span>
+                        <span className="text-xs font-normal text-slate-400">
+                          ({child.gender === "boy" ? "👦 Maschio" : child.gender === "girl" ? "👧 Femmina" : "🧒 Neutro"})
+                        </span>
+                      </h3>
                       {child.birth_year && (
                         <p className="text-xs text-slate-400">Classe {child.birth_year}</p>
                       )}

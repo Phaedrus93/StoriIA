@@ -26,6 +26,12 @@ export async function POST(req: Request) {
     if (!name || !name.trim()) {
       return NextResponse.json({ error: "Il nome dell'ambientazione è obbligatorio." }, { status: 400 });
     }
+    if (name.trim().length > 50) {
+      return NextResponse.json({ error: "Il nome dell'ambientazione supera il limite massimo di 50 caratteri." }, { status: 400 });
+    }
+    if (description && description.trim().length > 300) {
+      return NextResponse.json({ error: "La descrizione dell'ambientazione supera il limite massimo di 300 caratteri." }, { status: 400 });
+    }
 
     // 1. Recupero famiglia
     const { data: family, error: famErr } = await supabase

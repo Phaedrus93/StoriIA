@@ -2,6 +2,36 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { checkAdminPrivileges, createAdminClient } from "@/lib/admin";
 
+function enrichStory(s: any) {
+  if (!s) return s;
+  let title = s.title;
+  let content = s.content || s.generated_text || "";
+  let summary = s.summary || "";
+
+  if (!title && content) {
+    const lines = content.split("\n").filter((l: string) => l.trim().length > 0);
+    if (lines[0] && lines[0].startsWith("#")) {
+      title = lines[0].replace(/^#\s*/, "").trim();
+      content = lines.slice(1).join("\n").trim();
+    } else {
+      title = "Storia Preset";
+    }
+  }
+
+  if (!summary && content) {
+    summary = content.slice(0, 120) + (content.length > 120 ? "..." : "");
+  }
+
+  return {
+    ...s,
+    title: title || "Storia Preset",
+    content,
+    summary,
+    age_group: s.age_group || s.target_age_range || "4-6",
+    is_preset: true,
+  };
+}
+
 export async function GET() {
   try {
     const supabase = await createClient();
@@ -14,14 +44,14 @@ export async function GET() {
     const { data, error: dbErr } = await supabase
       .from("stories")
       .select("*")
-      .eq("is_preset", true)
+      .eq("source", "preset")
       .order("created_at", { ascending: false });
 
     if (dbErr) {
       return NextResponse.json({ error: dbErr.message }, { status: 500 });
     }
 
-    return NextResponse.json({ preset_stories: data || [] });
+    return NextResponse.json({ preset_stories: (data || []).map(enrichStory) });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Errore recupero storie preset";
     return NextResponse.json({ error: message }, { status: 500 });
@@ -40,16 +70,16 @@ export async function POST(req: Request) {
     const body = await req.json();
     const adminClient = createAdminClient();
 
+    const fullContent = body.title && !body.content?.startsWith("#")
+      ? `# ${body.title}\n\n${body.content || ""}`
+      : body.content || `# ${body.title || "Storia Preset"}\n\n`;
+
     const { data, error: dbErr } = await adminClient
       .from("stories")
       .insert({
-        title: body.title,
-        content: body.content || "",
-        summary: body.summary || "",
-        cover_image_url: body.cover_image_url || body.coverImageUrl || null,
-        age_group: body.age_group || body.ageGroup || "3-5",
-        moral_lesson_id: body.moral_lesson_id || body.moralLessonId || null,
-        is_preset: true,
+        target_age_range: body.age_group || body.ageGroup || "4-6",
+        generated_text: fullContent,
+        source: "preset",
       })
       .select()
       .single();
@@ -58,7 +88,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: dbErr.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, story: data });
+    return NextResponse.json({ success: true, story: enrichStory(data) });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Errore creazione storia preset";
     return NextResponse.json({ error: message }, { status: 500 });
@@ -80,25 +110,23 @@ export async function PUT(req: Request) {
     }
 
     const adminClient = createAdminClient();
-    const updates: Record<string, any> = { is_preset: true };
-    if (body.title !== undefined) updates.title = body.title;
-    if (body.content !== undefined) updates.content = body.content;
-    if (body.summary !== undefined) updates.summary = body.summary;
-    if (body.cover_image_url !== undefined || body.coverImageUrl !== undefined) {
-      updates.cover_image_url = body.cover_image_url || body.coverImageUrl;
+    const updates: Record<string, any> = { source: "preset" };
+
+    if (body.title !== undefined || body.content !== undefined) {
+      const fullContent = body.title && !body.content?.startsWith("#")
+        ? `# ${body.title}\n\n${body.content || ""}`
+        : body.content || `# ${body.title || ""}`;
+      updates.generated_text = fullContent;
     }
     if (body.age_group !== undefined || body.ageGroup !== undefined) {
-      updates.age_group = body.age_group || body.ageGroup;
-    }
-    if (body.moral_lesson_id !== undefined || body.moralLessonId !== undefined) {
-      updates.moral_lesson_id = body.moral_lesson_id || body.moralLessonId;
+      updates.target_age_range = body.age_group || body.ageGroup;
     }
 
     const { data, error: dbErr } = await adminClient
       .from("stories")
       .update(updates)
       .eq("id", body.id)
-      .eq("is_preset", true)
+      .eq("source", "preset")
       .select()
       .single();
 
@@ -106,7 +134,7 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: dbErr.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, story: data });
+    return NextResponse.json({ success: true, story: enrichStory(data) });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Errore aggiornamento storia preset";
     return NextResponse.json({ error: message }, { status: 500 });
@@ -134,7 +162,7 @@ export async function DELETE(req: Request) {
       .from("stories")
       .delete()
       .eq("id", id)
-      .eq("is_preset", true);
+      .eq("source", "preset");
 
     if (dbErr) {
       return NextResponse.json({ error: dbErr.message }, { status: 500 });
