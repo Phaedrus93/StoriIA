@@ -164,7 +164,7 @@ export default function ParentLayout({ children }: { children: React.ReactNode }
     { name: "Profili Figli", href: "/children", icon: Users },
     { name: "Personaggi", href: "/library/characters", icon: Sparkles },
     { name: "Ambientazioni", href: "/library/settings", icon: Library },
-    { name: "Storie AI", href: "/stories", icon: BookOpen },
+    { name: "Le Mie Storie", href: "/stories", icon: BookOpen },
     { name: "Impostazioni", href: "/settings", icon: UserCog },
   ];
 

@@ -224,6 +224,17 @@ describe("v2-auth-and-reset.test.ts — Reset Password, Verifica Email, Login So
     // Questo pin_hash nullo è esattamente ciò che attiva setShowPinWizard(true) impedendo l'uscita o la modalità bambino
   });
 
+  /*
+   * NOTA IMPORTANTE SULL'ACCOUNT LINKING DI SUPABASE AUTH:
+   * Questo test verifica solo il comportamento dell'upsert idempotente DATO che Supabase
+   * abbia già risolto le due identità (email + Google) sullo stesso user.id.
+   * Non verifica che Supabase esegua davvero quel collegamento automatico, poiché PGlite
+   * non replica il servizio Auth reale di Supabase.
+   * Il vero comportamento di account linking va confermato manualmente in staging/produzione:
+   * registra un utente con email X, poi prova "Continua con Google" con la stessa email X,
+   * e verifica che nella dashboard Supabase (Authentication > Users) risulti UN SOLO utente
+   * con entrambi i provider elencati, non due utenti separati.
+   */
   it("4. Verifica Account Linking: tentativo di login Google da parte di un utente con stessa email preesistente non duplica né azzera la famiglia", async () => {
     currentMockUser = { id: existingUserId, email: "email.user@example.com" };
     const client = makeMockClient();

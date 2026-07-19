@@ -154,10 +154,10 @@ export default function DashboardPage() {
 
         <Link href="/stories" className="glass-card p-6 group">
           <h3 className="font-bold text-lg text-white group-hover:text-amber-400 transition-colors">
-            Archivio Storie
+            Le Mie Storie
           </h3>
           <p className="text-sm text-slate-400 mt-1">
-            Sfoglia e assegna le storie ai tuoi figli.
+            Sfoglia e assegna le favole ai tuoi figli.
           </p>
         </Link>
 
