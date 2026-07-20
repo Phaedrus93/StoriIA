@@ -10,7 +10,8 @@ import { notifyFamily } from "@/lib/notifications";
 export async function enforceSuspensionOnDowngrade(
   adminClient: any,
   familyId: string,
-  newTier: SubscriptionTier | string
+  newTier: SubscriptionTier | string,
+  options?: { keepChildIds?: string[] }
 ): Promise<{ suspendedCount: number }> {
   const planData = await getSubscriptionPlan(newTier, adminClient);
   const maxAllowed = planData.maxChildren;
@@ -36,10 +37,35 @@ export async function enforceSuspensionOnDowngrade(
     return { suspendedCount: 0 };
   }
 
-  // I profili che eccedono il numero totalAllowed partendo dagli ultimi creati
-  const excessChildren = activeChildren.slice(totalAllowed);
+  let excessIds: string[] = [];
 
-  const excessIds = excessChildren.map((c: { id: string }) => c.id);
+  // Se il genitore ha scelto esplicitamente quali profili mantenere
+  if (options?.keepChildIds && Array.isArray(options.keepChildIds) && options.keepChildIds.length > 0) {
+    const activeIds = new Set(activeChildren.map((c: { id: string }) => c.id));
+    const validKeepIds = options.keepChildIds.filter((id) => activeIds.has(id)).slice(0, totalAllowed);
+
+    if (validKeepIds.length > 0) {
+      const keepSet = new Set(validKeepIds);
+      // Se non ne ha scelti a sufficienza per riempire totalAllowed, aggiungiamo i più vecchi come fallback
+      if (keepSet.size < totalAllowed) {
+        for (const child of activeChildren) {
+          if (!keepSet.has(child.id) && keepSet.size < totalAllowed) {
+            keepSet.add(child.id);
+          }
+        }
+      }
+      excessIds = activeChildren.filter((c: { id: string }) => !keepSet.has(c.id)).map((c: { id: string }) => c.id);
+    } else {
+      // Nessun ID valido in keepChildIds, fallback su ordinamento cronologico
+      const excessChildren = activeChildren.slice(totalAllowed);
+      excessIds = excessChildren.map((c: { id: string }) => c.id);
+    }
+  } else {
+    // Quando non è passata una scelta esplicita (es. downgrade automatico fine mese o webhook),
+    // NON sospendiamo automaticamente alcun profilo in modo che activeChildren.length > totalAllowed
+    // resti true e faccia scattare il modal di scelta obbligatorio e bloccante nella UI genitore.
+    return { suspendedCount: 0 };
+  }
 
   if (excessIds.length > 0) {
     await adminClient
@@ -114,5 +140,34 @@ export async function checkAndExpireGiftSubscription(
   }
 
   return { expired: true, newTier: targetTier };
+}
+
+/**
+ * Al rinnovo o upgrade dell'abbonamento (o riscatto regalo abbonamento / add-on),
+ * riattiva automaticamente tutti i profili sospesi della famiglia.
+ * Se dopo la riattivazione il numero totale di profili attivi supera comunque la capienza del nuovo piano,
+ * la UI del genitore farà scattare automaticamente il modale bloccante di selezione profili.
+ */
+export async function reactivateSuspendedChildrenOnUpgrade(
+  adminClient: any,
+  familyId: string
+): Promise<{ reactivatedCount: number }> {
+  const { data: suspendedChildren } = await adminClient
+    .from("child_profiles")
+    .select("id")
+    .eq("family_id", familyId)
+    .eq("is_suspended", true);
+
+  if (!suspendedChildren || suspendedChildren.length === 0) {
+    return { reactivatedCount: 0 };
+  }
+
+  const ids = suspendedChildren.map((c: { id: string }) => c.id);
+  await adminClient
+    .from("child_profiles")
+    .update({ is_suspended: false })
+    .in("id", ids);
+
+  return { reactivatedCount: ids.length };
 }
 

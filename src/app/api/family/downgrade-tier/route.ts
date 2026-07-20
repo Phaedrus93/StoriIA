@@ -18,8 +18,10 @@ import { getSubscriptionPlan } from "@/lib/plans";
 export async function downgradeFamilyTierServer(
   adminClient: any,
   userId: string,
-  newTier: string
+  newTier: string,
+  optionsOrIds?: string[] | { keepChildIds?: string[] }
 ): Promise<{ success?: boolean; error?: string; status?: number; suspendedCount?: number; tier?: string; newTier?: string }> {
+  const keepChildIds = Array.isArray(optionsOrIds) ? optionsOrIds : optionsOrIds?.keepChildIds;
   const TIER_RANK: Record<string, number> = {
     free: 1,
     premium: 2,
@@ -53,7 +55,7 @@ export async function downgradeFamilyTierServer(
     };
   }
 
-  if (newRank === currentRank) {
+  if (newRank === currentRank && (!keepChildIds || !Array.isArray(keepChildIds) || keepChildIds.length === 0)) {
     return {
       error: "Il downgrade richiede la selezione di un piano inferiore a quello attuale.",
       status: 400,
@@ -68,7 +70,8 @@ export async function downgradeFamilyTierServer(
   const { suspendedCount } = await enforceSuspensionOnDowngrade(
     adminClient,
     family.id,
-    newTier as SubscriptionTier
+    newTier as SubscriptionTier,
+    { keepChildIds }
   );
 
   return { success: true, suspendedCount, tier: newTier, newTier, status: 200 };
@@ -94,8 +97,9 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const newTier = body.newTier || body.targetTier;
+    const keepChildIds = body.keepChildIds;
     const adminClient = createAdminClient();
-    const res = await downgradeFamilyTierServer(adminClient, user.id, newTier);
+    const res = await downgradeFamilyTierServer(adminClient, user.id, newTier, keepChildIds);
 
     if (res.error) {
       return NextResponse.json({ error: res.error }, { status: res.status || 400 });

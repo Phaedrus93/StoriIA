@@ -14,6 +14,7 @@ interface ChildProfile {
   avatar_preset_id: string | null;
   active_badge_id?: string | null;
   active_frame_id?: string | null;
+  is_suspended?: boolean;
 }
 
 export default function ChildSelectPage() {
@@ -35,19 +36,25 @@ export default function ChildSelectPage() {
     const [{ data }, { data: cosmData }] = await Promise.all([
       supabase
         .from("child_profiles")
-        .select("id, name, birth_year, avatar_preset_id, active_badge_id, active_frame_id")
+        .select("id, name, birth_year, avatar_preset_id, active_badge_id, active_frame_id, is_suspended, created_at")
         .order("created_at", { ascending: true }),
       supabase.from("cosmetic_items").select("id, icon_preset"),
     ]);
 
     const map: Record<string, string> = {};
     if (cosmData) {
-      cosmData.forEach((c: any) => {
+      cosmData.forEach((c: { id: string; icon_preset: string }) => {
         map[c.id] = c.icon_preset;
       });
     }
     setCosmeticsMap(map);
-    setChildren(data || []);
+    const sorted = [...(data || [])].sort((a: any, b: any) => {
+      if (Boolean(a.is_suspended) !== Boolean(b.is_suspended)) {
+        return Boolean(a.is_suspended) ? 1 : -1;
+      }
+      return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+    });
+    setChildren(sorted);
     setLoading(false);
   }
 
@@ -142,11 +149,13 @@ export default function ChildSelectPage() {
               return (
                 <button
                   key={child.id}
-                  onClick={() => handleSelectProfile(child)}
-                  disabled={selectingId !== null}
-                  className={`group relative text-left glass-card p-6 flex flex-col justify-between transition-all hover:scale-[1.03] hover:border-indigo-500/60 hover:shadow-xl hover:shadow-indigo-500/20 ${
-                    isSelecting ? "border-indigo-500 bg-indigo-600/10" : ""
-                  }`}
+                  onClick={() => !child.is_suspended && handleSelectProfile(child)}
+                  disabled={selectingId !== null || Boolean(child.is_suspended)}
+                  className={`group relative text-left glass-card p-6 flex flex-col justify-between transition-all ${
+                    child.is_suspended
+                      ? "grayscale opacity-50 cursor-not-allowed border-slate-800 bg-slate-900/80"
+                      : "hover:scale-[1.03] hover:border-indigo-500/60 hover:shadow-xl hover:shadow-indigo-500/20"
+                  } ${isSelecting ? "border-indigo-500 bg-indigo-600/10" : ""}`}
                 >
                   <div className="space-y-4">
                     <ChildAvatarWithBadge
@@ -156,10 +165,10 @@ export default function ChildSelectPage() {
                       activeFrameId={child.active_frame_id}
                       cosmeticsMap={cosmeticsMap}
                       size="lg"
-                      className="group-hover:scale-110 transition-transform"
+                      className={!child.is_suspended ? "group-hover:scale-110 transition-transform" : ""}
                     />
                     <div>
-                      <h2 className="text-xl font-bold text-white group-hover:text-indigo-300 transition-colors">
+                      <h2 className={`text-xl font-bold text-white transition-colors ${!child.is_suspended ? "group-hover:text-indigo-300" : ""}`}>
                         {child.name}
                       </h2>
                       {age !== null && (
@@ -170,8 +179,10 @@ export default function ChildSelectPage() {
                     </div>
                   </div>
 
-                  <div className="mt-6 pt-4 border-t border-slate-800/80 flex items-center justify-between text-xs font-semibold text-indigo-400 group-hover:text-indigo-300">
-                    <span>{isSelecting ? "Avvio..." : "Entra nell'area"}</span>
+                  <div className={`mt-6 pt-4 border-t border-slate-800/80 flex items-center justify-between text-xs font-semibold ${
+                    child.is_suspended ? "text-rose-400" : "text-indigo-400 group-hover:text-indigo-300"
+                  }`}>
+                    <span>{child.is_suspended ? "🔒 Profilo Sospeso" : isSelecting ? "Avvio..." : "Entra nell'area"}</span>
                     {isSelecting && <CheckCircle2 className="w-4 h-4 animate-spin" />}
                   </div>
                 </button>

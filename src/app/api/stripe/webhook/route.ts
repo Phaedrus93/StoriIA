@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { PLAN_LIMITS, APP_CONFIG, type SubscriptionTier } from "@/lib/config";
 import { getSubscriptionPlan } from "@/lib/plans";
 import { notifyFamily } from "@/lib/notifications";
-import { enforceSuspensionOnDowngrade } from "@/lib/billing-utils";
+import { enforceSuspensionOnDowngrade, reactivateSuspendedChildrenOnUpgrade } from "@/lib/billing-utils";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "sk_test_placeholder", {
   apiVersion: "2026-06-24.dahlia",
@@ -157,6 +157,7 @@ export async function POST(req: Request) {
             .eq("id", familyId);
 
           await enforceSuspensionOnDowngrade(adminClient, familyId, newTier);
+          await reactivateSuspendedChildrenOnUpgrade(adminClient, familyId);
           if (monthlyCredits > 0) {
             const { data: fam } = await adminClient
               .from("families").select("credits_balance").eq("id", familyId).single();
@@ -193,6 +194,7 @@ export async function POST(req: Request) {
           await adminClient.from("families")
             .update({ addon_children_count: currentAddons + 1 })
             .eq("id", familyId);
+          await reactivateSuspendedChildrenOnUpgrade(adminClient, familyId);
           await notifyFamily({
             familyId,
             category: "billing",
@@ -236,6 +238,7 @@ export async function POST(req: Request) {
             if (fam.pending_addon_children_count !== null && fam.pending_addon_children_count !== undefined) {
               await enforceSuspensionOnDowngrade(adminClient, familyId, tier);
             }
+            await reactivateSuspendedChildrenOnUpgrade(adminClient, familyId);
 
             if (monthlyCredits > 0) {
               await adminClient.from("credit_ledger").insert({

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { reactivateSuspendedChildrenOnUpgrade } from "@/lib/billing-utils";
 import Stripe from "stripe";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "sk_test_placeholder", {
@@ -67,6 +69,9 @@ export async function POST() {
         { status: 500 }
       );
     }
+
+    const adminClient = createAdminClient();
+    await reactivateSuspendedChildrenOnUpgrade(adminClient, family.id);
 
     return NextResponse.json({
       success: true,

@@ -104,13 +104,20 @@ describe("StoriIA v1.0 - Downgrade Tier & enforceSuspensionOnDowngrade Real Exec
     await db.close();
   });
 
-  it("deve chiamare l'endpoint REALE /api/family/downgrade-tier e sospendere i 3 profili bambino eccedenti su PGlite", async () => {
+  it("deve chiamare l'endpoint REALE /api/family/downgrade-tier e richiedere la selezione esplicita (o sospendere con keepChildIds)", async () => {
     const userId = "11111111-1111-1111-1111-111111111111";
     const familyId = "22222222-2222-2222-2222-222222222222";
     const adapter = createPGliteSupabaseAdapter(db);
 
-    // Chiamata all'endpoint applicativo REALE di downgrade tier
-    const res = await downgradeFamilyTierServer(adapter, userId, "free");
+    // 1. Chiamata senza keepChildIds: non deve sospendere automaticamente, lasciando l'obbligo di scelta al modale bloccante
+    const resNoChoice = await downgradeFamilyTierServer(adapter, userId, "free");
+    expect(resNoChoice.success).toBe(true);
+    expect(resNoChoice.suspendedCount).toBe(0);
+
+    // 2. Chiamata con la scelta esplicita del genitore (keepChildIds)
+    const res = await downgradeFamilyTierServer(adapter, userId, "free", {
+      keepChildIds: ["33333333-3333-3333-3333-333333333301"],
+    });
 
     expect(res.success).toBe(true);
     expect(res.suspendedCount).toBe(3);

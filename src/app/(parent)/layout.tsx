@@ -32,11 +32,81 @@ export default function ParentLayout({ children }: { children: React.ReactNode }
   const [wizardError, setWizardError] = useState<string | null>(null);
   const [wizardLoading, setWizardLoading] = useState(false);
 
+  // Stato e controllo per la scelta obbligatoria profili al termine abbonamento o superamento limite
+  const [limitCheckInfo, setLimitCheckInfo] = useState<{
+    requiresSelection: boolean;
+    activeCount: number;
+    maxAllowed: number;
+    tier: string;
+    activeChildren: Array<{ id: string; name: string; gender?: string; avatar_preset_id?: string }>;
+  } | null>(null);
+  const [selectedKeepIds, setSelectedKeepIds] = useState<string[]>([]);
+  const [enforcingLimit, setEnforcingLimit] = useState(false);
+  const [enforceError, setEnforceError] = useState<string | null>(null);
+
   const supabase = createClient();
 
   useEffect(() => {
     checkPinSecurity();
-  }, []);
+    checkChildLimits();
+  }, [pathname]);
+
+  async function checkChildLimits() {
+    try {
+      const res = await fetch("/api/family/limit-check", { cache: "no-store" });
+      if (res.ok) {
+        const info = await res.json();
+        setLimitCheckInfo(info);
+        if (info.requiresSelection && info.activeChildren) {
+          // Preseleziona fino a maxAllowed come suggerimento iniziale
+          setSelectedKeepIds(info.activeChildren.slice(0, info.maxAllowed).map((c: { id: string }) => c.id));
+        }
+      }
+    } catch {
+      // ignora errore di rete silently
+    }
+  }
+
+  const handleConfirmLimitSelection = async () => {
+    if (!limitCheckInfo) return;
+    if (selectedKeepIds.length !== limitCheckInfo.maxAllowed) {
+      setEnforceError(`Devi selezionare esattamente ${limitCheckInfo.maxAllowed} ${limitCheckInfo.maxAllowed === 1 ? 'profilo' : 'profili'} per confermare.`);
+      return;
+    }
+    setEnforcingLimit(true);
+    setEnforceError(null);
+    try {
+      const res = await fetch("/api/family/enforce-limits", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keepChildIds: selectedKeepIds }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        await checkChildLimits();
+        if (pathname === "/children") {
+          window.location.reload();
+        }
+      } else {
+        setEnforceError(data.error || "Errore durante la conferma");
+      }
+    } catch {
+      setEnforceError("Errore di rete durante la conferma della selezione");
+    } finally {
+      setEnforcingLimit(false);
+    }
+  };
+
+  const handleToggleKeepChild = (id: string) => {
+    if (!limitCheckInfo) return;
+    if (selectedKeepIds.includes(id)) {
+      setSelectedKeepIds(selectedKeepIds.filter((item) => item !== id));
+    } else {
+      if (selectedKeepIds.length < limitCheckInfo.maxAllowed) {
+        setSelectedKeepIds([...selectedKeepIds, id]);
+      }
+    }
+  };
 
   async function checkPinSecurity() {
     const {
@@ -271,6 +341,95 @@ export default function ParentLayout({ children }: { children: React.ReactNode }
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {children}
       </main>
+
+      {/* Modale Bloccante Obbligatorio per Selezione Profili al superamento limite o termine abbonamento */}
+      {limitCheckInfo?.requiresSelection && !pathname.startsWith("/billing") && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/95 backdrop-blur-xl animate-in fade-in">
+          <div className="glass-card max-w-lg w-full p-6 md:p-8 border-amber-500/40 bg-slate-900 shadow-2xl space-y-6">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-300">
+                <ShieldAlert className="w-8 h-8" />
+              </div>
+              <div>
+                <h2 className="text-xl font-extrabold text-white">
+                  Scelta Obbligatoria Profili
+                </h2>
+                <p className="text-xs text-amber-300 font-medium">
+                  Abbonamento terminato o piano {limitCheckInfo.tier.toUpperCase()} superato
+                </p>
+              </div>
+            </div>
+
+            <p className="text-sm text-slate-300 leading-relaxed">
+              Il tuo piano consente un massimo di <strong className="text-white font-bold">{limitCheckInfo.maxAllowed} {limitCheckInfo.maxAllowed === 1 ? 'profilo attivo' : 'profili attivi'}</strong>, ma attualmente ne hai <strong className="text-white font-bold">{limitCheckInfo.activeCount}</strong>.
+              <br /><br />
+              Seleziona {limitCheckInfo.maxAllowed === 1 ? "l'unico profilo" : `i ${limitCheckInfo.maxAllowed} profili`} da mantenere {limitCheckInfo.maxAllowed === 1 ? 'attivo' : 'attivi'}. Tutti gli altri verranno sospesi e conservati al sicuro. Finché non confermi la scelta o non estendi il piano, l'applicazione non è utilizzabile.
+            </p>
+
+            {enforceError && (
+              <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs font-semibold">
+                {enforceError}
+              </div>
+            )}
+
+            <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
+              {limitCheckInfo.activeChildren.map((child) => {
+                const isChecked = selectedKeepIds.includes(child.id);
+                return (
+                  <div
+                    key={child.id}
+                    onClick={() => handleToggleKeepChild(child.id)}
+                    className={`p-3.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
+                      isChecked
+                        ? "bg-indigo-500/20 border-indigo-500/50 text-white shadow-md"
+                        : "bg-slate-800/60 border-slate-700/60 text-slate-400 hover:border-slate-600"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${isChecked ? 'bg-indigo-500 border-indigo-400 text-white' : 'border-slate-600 bg-slate-800'}`}>
+                        {isChecked && <span className="text-xs font-bold">✓</span>}
+                      </div>
+                      <div>
+                        <div className={`font-bold text-sm ${isChecked ? 'text-white' : 'text-slate-300'}`}>{child.name}</div>
+                        <div className="text-xs text-slate-400">
+                          {child.gender === "boy" ? "👦 Maschio" : child.gender === "girl" ? "👧 Femmina" : "🧒 Neutro"}
+                        </div>
+                      </div>
+                    </div>
+                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-lg border ${
+                      isChecked ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' : 'bg-slate-800 text-slate-400 border-slate-700'
+                    }`}>
+                      {isChecked ? "Da Mantenere" : "Verrà Sospeso"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="pt-2 space-y-3 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={handleConfirmLimitSelection}
+                disabled={enforcingLimit || selectedKeepIds.length !== limitCheckInfo.maxAllowed}
+                className="btn-primary w-full py-3 bg-gradient-to-r from-amber-500 to-indigo-500 hover:opacity-95 font-bold text-sm"
+              >
+                {enforcingLimit
+                  ? "Applicazione in corso..."
+                  : `Conferma Scelta e Sospendi gli altri (${selectedKeepIds.length}/${limitCheckInfo.maxAllowed})`}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => router.push("/billing")}
+                className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-amber-300 transition-all flex items-center justify-center gap-2"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>Rinnova o Estendi Abbonamento ({limitCheckInfo.tier.toUpperCase()})</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Wizard Obbligatorio Primo Accesso per Configurazione PIN */}
       {showPinWizard && (

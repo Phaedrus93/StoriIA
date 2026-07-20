@@ -16,6 +16,10 @@ import {
   Users,
   Plus,
   ShieldCheck,
+  Lock,
+  Play,
+  Pause,
+  AlertTriangle,
 } from "lucide-react";
 import { getAvatarUrl, registerDynamicAvatarPresets } from "@/lib/avatars";
 import ConfirmationModal from "@/components/ConfirmationModal";
@@ -33,6 +37,7 @@ interface ChildProfile {
   adventure_points?: number;
   active_badge_id?: string | null;
   active_frame_id?: string | null;
+  is_suspended?: boolean;
 }
 
 export default function ChildrenPage() {
@@ -52,6 +57,8 @@ export default function ChildrenPage() {
   // Stato per la modale di conferma eliminazione
   const [deleteChildId, setDeleteChildId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  const [suspensionLoading, setSuspensionLoading] = useState<string | null>(null);
 
   // Limiti piano
   const [canAddChild, setCanAddChild] = useState<boolean>(true);
@@ -120,13 +127,45 @@ export default function ChildrenPage() {
       });
     }
     setCosmeticsMap(map);
-    setChildren(data || []);
+    const sorted = [...(data || [])].sort((a: any, b: any) => {
+      if (Boolean(a.is_suspended) !== Boolean(b.is_suspended)) {
+        return Boolean(a.is_suspended) ? 1 : -1;
+      }
+      return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+    });
+    setChildren(sorted);
     setLoading(false);
     // Ricontrolla limite dopo ogni ricarica
     checkChildLimit();
   }
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const handleReactivateChild = async (child: ChildProfile) => {
+    setSuspensionLoading(child.id);
+    setErrorMessage(null);
+    try {
+      const res = await fetch("/api/child/reactivate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ childId: child.id }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        await loadChildren();
+      } else if (data.requiresUpgrade) {
+        if (confirm(data.error + "\n\nVuoi andare subito alla pagina Abbonamenti per estendere il tuo piano?")) {
+          window.location.href = "/billing";
+        }
+      } else {
+        alert(data.error || "Errore nella riattivazione del profilo");
+      }
+    } catch {
+      alert("Errore di rete durante la riattivazione");
+    } finally {
+      setSuspensionLoading(null);
+    }
+  };
 
   const handleStartEdit = (child: ChildProfile) => {
     setEditingChildId(child.id);
@@ -522,8 +561,8 @@ export default function ChildrenPage() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {children.map((child) => (
-                <div key={child.id} className="glass-card p-5 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
+                <div key={child.id} className={`glass-card p-5 flex items-center justify-between transition-all ${child.is_suspended ? 'border-slate-800 bg-slate-900/80 shadow-inner' : ''}`}>
+                  <div className={`flex items-center gap-3 ${child.is_suspended ? 'grayscale opacity-50 select-none pointer-events-none' : ''}`}>
                     <ChildAvatarWithBadge
                       name={child.name}
                       avatarPresetId={child.avatar_preset_id}
@@ -542,33 +581,60 @@ export default function ChildrenPage() {
                       {child.birth_year && (
                         <p className="text-xs text-slate-400">Classe {child.birth_year}</p>
                       )}
-                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full mt-1">
-                        ★ {child.adventure_points || 0} pt
-                      </span>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full">
+                          ★ {child.adventure_points || 0} pt
+                        </span>
+                        {child.is_suspended && (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-300 bg-rose-500/15 border border-rose-500/30 px-2 py-0.5 rounded-full">
+                            <Lock className="w-3 h-3" />
+                            <span>Sospeso</span>
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => handleOpenGamification(child.id)}
-                      className="p-2 text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 rounded-xl transition-colors"
-                      title="Negozio Gamification & Contenuti"
-                    >
-                      <Sparkles className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleStartEdit(child)}
-                      className="p-2 text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-xl transition-colors"
-                      title="Modifica profilo"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
+                  <div className="flex items-center gap-1 z-10">
+                    {child.is_suspended ? (
+                      <button
+                        type="button"
+                        onClick={() => handleReactivateChild(child)}
+                        disabled={suspensionLoading === child.id}
+                        className="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all shadow-sm"
+                        title="Riattiva questo profilo (richiede capienza nel piano)"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                        <span>Riattiva</span>
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenGamification(child.id)}
+                          className="p-2 text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 rounded-xl transition-colors"
+                          title="Negozio Gamification & Contenuti"
+                        >
+                          <Sparkles className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleStartEdit(child)}
+                          className="p-2 text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-xl transition-colors"
+                          title="Modifica profilo"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                      </>
+                    )}
                     <button
                       type="button"
                       onClick={() => handleDeleteChild(child.id)}
-                      className="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors"
+                      className={`p-2 rounded-xl transition-all ${
+                        child.is_suspended
+                          ? "text-slate-500 grayscale opacity-50 hover:grayscale-0 hover:opacity-100 hover:text-rose-400 hover:bg-rose-500/10"
+                          : "text-slate-400 hover:text-rose-400 hover:bg-rose-500/10"
+                      }`}
                       title="Elimina profilo"
                     >
                       <Trash2 className="w-4 h-4" />

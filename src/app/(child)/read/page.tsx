@@ -825,6 +825,7 @@ export default function ChildReaderPage() {
         onSetActiveCosmetic={handleSetActiveCosmetic}
         onPointsUpdate={(pts) => setAdventurePoints(pts)}
         rewardToast={rewardToast}
+        isChildMode={isChildModeSession}
       />
 
       {/* Modale PIN Uscita al Genitore */}

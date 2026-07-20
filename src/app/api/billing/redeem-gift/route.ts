@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSubscriptionPlan } from "@/lib/plans";
 import { notifyFamily } from "@/lib/notifications";
+import { reactivateSuspendedChildrenOnUpgrade } from "@/lib/billing-utils";
 
 export async function POST(req: Request) {
   try {
@@ -107,6 +108,8 @@ export async function POST(req: Request) {
           pre_gift_tier: preGiftTier,
         })
         .eq("id", family.id);
+
+      await reactivateSuspendedChildrenOnUpgrade(adminClient, family.id);
 
       // Accredito dei monthly_credits (NON welcome_credits)
       const planData = await getSubscriptionPlan(tierToApply, adminClient);
