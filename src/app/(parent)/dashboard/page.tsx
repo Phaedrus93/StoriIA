@@ -20,17 +20,19 @@ interface ChildProfile {
 export default function DashboardPage() {
   const [children, setChildren] = useState<ChildProfile[]>([]);
   const [cosmeticsMap, setCosmeticsMap] = useState<Record<string, string>>({});
+  const [parentProfile, setParentProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadData() {
       const supabase = createClient();
-      const [{ data }, { data: cosmData }] = await Promise.all([
+      const [{ data }, { data: cosmData }, profileRes] = await Promise.all([
         supabase
           .from("child_profiles")
           .select("id, name, birth_year, avatar_preset_id, adventure_points, active_badge_id, active_frame_id")
           .order("created_at", { ascending: true }),
         supabase.from("cosmetic_items").select("id, icon_preset"),
+        fetch("/api/family/profile", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
       ]);
 
       const map: Record<string, string> = {};
@@ -41,6 +43,9 @@ export default function DashboardPage() {
       }
       setCosmeticsMap(map);
       setChildren(data || []);
+      if (profileRes?.profile) {
+        setParentProfile(profileRes.profile);
+      }
       setLoading(false);
     }
     loadData();
@@ -67,6 +72,50 @@ export default function DashboardPage() {
             <span>Genera Nuova Storia AI</span>
           </Link>
         </div>
+      </div>
+
+      {/* Card Profilo Genitore ("Il Tuo Profilo Guida") */}
+      <div className="glass-card p-6 bg-gradient-to-r from-slate-900 via-indigo-950/30 to-slate-900 border-indigo-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="relative">
+            {parentProfile?.preset ? (
+              <img
+                src={parentProfile.preset.image_url}
+                alt={parentProfile.preset.name}
+                className="w-14 h-14 rounded-2xl object-cover border-2 border-indigo-500/40 shadow-md bg-slate-800"
+              />
+            ) : (
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center text-white text-2xl font-extrabold border border-indigo-400/40 shadow-md">
+                👑
+              </div>
+            )}
+            {parentProfile?.badge && (
+              <div
+                className="absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-full bg-slate-900 border border-amber-500/50 text-[10px] font-bold text-amber-300 shadow"
+                title={parentProfile.badge.name}
+              >
+                ★ {parentProfile.badge.name}
+              </div>
+            )}
+          </div>
+          <div>
+            <div className="text-xs font-bold text-indigo-400 uppercase tracking-wider">
+              Il Tuo Profilo Guida
+            </div>
+            <h3 className="text-lg font-extrabold text-white">
+              {parentProfile?.parent_display_name || "Genitore Guida"}
+            </h3>
+            <p className="text-xs text-slate-300 mt-0.5">
+              Ruolo: <span className="text-slate-100 font-semibold">{parentProfile?.parent_role || "Narratore"}</span>
+            </p>
+          </div>
+        </div>
+        <Link
+          href="/settings"
+          className="btn-secondary text-xs !py-2 !px-4 border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/10 shrink-0"
+        >
+          Personalizza Avatar & Ruolo →
+        </Link>
       </div>
 
       {/* Grid Profili Figli */}

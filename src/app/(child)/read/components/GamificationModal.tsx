@@ -600,7 +600,7 @@ export default function GamificationModal({
   // ── Main render ─────────────────────────────────────────────────────────────
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
       <div className="max-w-2xl w-full glass-card border-amber-500/40 max-h-[90vh] overflow-y-auto flex flex-col">
         {/* Header */}
         <div className="sticky top-0 z-10 glass-card border-0 border-b border-slate-800 p-5 flex items-center justify-between bg-slate-950/90 backdrop-blur-sm rounded-t-2xl">

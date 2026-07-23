@@ -51,6 +51,15 @@ vi.mock("@/lib/supabase/server", () => ({
   }),
 }));
 
+vi.mock("@/lib/supabase/admin", () => ({
+  createAdminClient: () => ({
+    from: (table: string) => ({
+      update: () => ({ eq: () => ({ eq: async () => ({ error: null }) }) }),
+      select: () => ({ eq: () => ({ eq: async () => ({ data: [], error: null }) }) }),
+    }),
+  }),
+}));
+
 describe("StoriIA — Verifica Cancellazione e Riattivazione Abbonamento Stripe & DB Locale (Responsabilità Separatas)", () => {
   beforeEach(() => {
     vi.clearAllMocks();

@@ -10,6 +10,7 @@ import {
   Library,
   Users,
   ArrowRight,
+  Trash2,
 } from "lucide-react";
 import ContentReportModal from "@/components/stories/ContentReportModal";
 import StoriesFilterBar, {
@@ -20,6 +21,16 @@ import StoryCardUnified, {
   type ChildProfileOption,
 } from "@/components/stories/StoryCardUnified";
 import { filterStories } from "@/lib/stories-filter";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from "@/components/ui/alert-dialog";
 
 export default function StoriesArchivePage() {
   const [stories, setStories] = useState<UnifiedStory[]>([]);
@@ -348,40 +359,37 @@ export default function StoriesArchivePage() {
         </div>
       )}
 
-      {/* Modale di Conferma Eliminazione (solo per storie generate, mai preset) */}
-      {storyToDelete && storyToDelete.source !== "preset" && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
-          <div className="glass-card p-6 border-slate-800 max-w-md w-full space-y-4">
-            <div className="flex items-center gap-3 text-rose-400">
-              <Trash2 className="w-6 h-6" />
-              <h3 className="text-lg font-bold text-white">Elimina Storia</h3>
-            </div>
-            <p className="text-sm text-slate-300">
+      {/* Modale di Conferma Eliminazione con AlertDialog */}
+      <AlertDialog
+        open={Boolean(storyToDelete && storyToDelete.source !== "preset")}
+        onOpenChange={(open) => !open && !deleting && setStoryToDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-rose-400">
+              <Trash2 className="w-5 h-5" />
+              <span>Elimina Storia</span>
+            </AlertDialogTitle>
+            <AlertDialogDescription>
               Sei sicuro di voler eliminare definitivamente questa storia generata? 
               L&apos;azione rimuoverà anche i progressi di lettura e i PDF associati.
-            </p>
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                onClick={() => setStoryToDelete(null)}
-                disabled={deleting}
-                className="btn-secondary text-xs"
-              >
-                Annulla
-              </button>
-              <button
-                onClick={confirmDeleteStory}
-                disabled={deleting}
-                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs flex items-center gap-2"
-              >
-                {deleting && (
-                  <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                )}
-                <span>Elimina Definitivamente</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Annulla</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteStory}
+              disabled={deleting}
+              className="bg-rose-600 hover:bg-rose-700 text-white focus:ring-rose-500 flex items-center gap-2"
+            >
+              {deleting && (
+                <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              )}
+              <span>{deleting ? "Eliminazione..." : "Elimina Definitivamente"}</span>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Modale Segnalazione Contenuto Problematico */}
       <ContentReportModal

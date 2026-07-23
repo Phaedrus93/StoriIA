@@ -22,7 +22,17 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { getAvatarUrl, registerDynamicAvatarPresets } from "@/lib/avatars";
-import ConfirmationModal from "@/components/ConfirmationModal";
+import { ResponsiveModal } from "@/components/ui/responsive-modal";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from "@/components/ui/alert-dialog";
 import { ChildAvatarWithBadge } from "@/components/ChildAvatarWithBadge";
 import GamificationModal from "@/app/(child)/read/components/GamificationModal";
 
@@ -67,6 +77,7 @@ export default function ChildrenPage() {
   } | null>(null);
 
   // Form Creazione / Modifica Figlio
+  const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingChildId, setEditingChildId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [birthYear, setBirthYear] = useState("");
@@ -167,6 +178,11 @@ export default function ChildrenPage() {
     }
   };
 
+  const handleStartCreate = () => {
+    handleCancelEdit();
+    setIsFormOpen(true);
+  };
+
   const handleStartEdit = (child: ChildProfile) => {
     setEditingChildId(child.id);
     setName(child.name);
@@ -175,6 +191,7 @@ export default function ChildrenPage() {
     setGender(cGender);
     setSelectedAvatar(child.avatar_preset_id || avatarPresets[0]?.id || APP_CONFIG.defaultAvatarPresets[0].id);
     setErrorMessage(null);
+    setIsFormOpen(true);
   };
 
   const handleCancelEdit = () => {
@@ -184,6 +201,7 @@ export default function ChildrenPage() {
     setGender("neutral");
     setSelectedAvatar(avatarPresets[0]?.id || APP_CONFIG.defaultAvatarPresets[0].id);
     setErrorMessage(null);
+    setIsFormOpen(false);
   };
 
   const handleAddOrEditChild = async (e: React.FormEvent) => {
@@ -241,8 +259,8 @@ export default function ChildrenPage() {
       setErrorMessage(
         err instanceof Error ? err.message : "Impossibile salvare il profilo."
       );
-    } finally {
       setIsCreating(false);
+      setIsFormOpen(false);
     }
   };
 
@@ -344,319 +362,332 @@ export default function ChildrenPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Form Creazione / Modifica Figlio */}
-        <div className="glass-card p-6 lg:col-span-1 space-y-6">
-          <h2 className="text-lg font-bold flex items-center gap-2">
-            <Plus className="w-5 h-5 text-indigo-400" />
-            <span>{editingChildId ? "Modifica Profilo" : "Aggiungi Profilo"}</span>
-          </h2>
-
-          {/* Banner info piano */}
-          {childLimitInfo && (
-            <div className={`p-3 rounded-xl text-xs border ${
-              canAddChild
-                ? "bg-indigo-500/10 border-indigo-500/30 text-indigo-300"
-                : "bg-amber-500/10 border-amber-500/30 text-amber-300"
-            }`}>
-              <div className="flex items-center justify-between">
-                <span className="font-semibold">
-                  Profili: {childLimitInfo.currentCount} / {childLimitInfo.maxAllowed}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 glass-card p-5 border-indigo-500/20">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
+            <Users className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="font-bold text-white">Profili Attivi: {children.length}</h2>
+              {childLimitInfo && (
+                <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${
+                  canAddChild
+                    ? "bg-indigo-500/15 text-indigo-300 border-indigo-500/30"
+                    : "bg-amber-500/15 text-amber-300 border-amber-500/30"
+                }`}>
+                  {childLimitInfo.currentCount} / {childLimitInfo.maxAllowed}
                   {childLimitInfo.addonCount > 0 && ` (+${childLimitInfo.addonCount} add-on)`}
                 </span>
-                <span className="uppercase font-bold text-[10px] opacity-70">
-                  Piano {childLimitInfo.tier}
-                </span>
-              </div>
+              )}
             </div>
-          )}
+            <p className="text-xs text-slate-400 mt-0.5">
+              Piano attuale: <strong className="text-slate-200 uppercase">{childLimitInfo?.tier || "FREE"}</strong>
+            </p>
+          </div>
+        </div>
 
-          {/* Blocco form se limite raggiunto */}
-          {!canAddChild && !editingChildId ? (
-            <div className="space-y-4">
-              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-sm space-y-2">
-                <p className="font-bold flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-amber-400" />
-                  Limite profili raggiunto
-                </p>
-                <p className="text-xs text-amber-300/80 leading-relaxed">
-                  Con il piano <strong>{childLimitInfo?.tier?.toUpperCase()}</strong> puoi gestire fino a <strong>{childLimitInfo?.maxAllowed}</strong> profil{childLimitInfo?.maxAllowed === 1 ? "o" : "i"} bambino.
-                  Fai l&apos;upgrade o aggiungi uno slot aggiuntivo per continuare.
-                </p>
+        <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+          {!canAddChild ? (
+            <Link href="/billing" className="btn-primary text-xs !py-2.5 !px-4 flex items-center justify-center gap-2 w-full sm:w-auto">
+              <Sparkles className="w-4 h-4" />
+              <span>Aumenta Limite / Upgrade</span>
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={handleStartCreate}
+              className="btn-primary text-xs !py-2.5 !px-4 flex items-center justify-center gap-2 w-full sm:w-auto shadow-md shadow-indigo-500/20"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>+ Aggiungi Profilo</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Banner Gamification info per i genitori */}
+      <div className="glass-card p-5 border-amber-500/30 bg-gradient-to-r from-amber-500/10 to-indigo-500/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <Sparkles className="w-6 h-6 text-amber-400 shrink-0 mt-0.5" />
+          <div>
+            <h3 className="font-bold text-white text-sm">
+              Punti Avventura, Gamification & Contenuti Narrativi
+            </h3>
+            <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+              I bambini guadagnano <strong className="text-amber-300">+15 Punti Avventura</strong> per ogni storia completata, oltre a punti bonus con le <strong className="text-indigo-300">Missioni di Lettura</strong>. Con i punti possono sbloccare badge, cornici e <strong className="text-amber-300">tratti e stili narrativi</strong> per tutta la famiglia!
+            </p>
+          </div>
+        </div>
+        {children.length > 0 && (
+          <button
+            type="button"
+            onClick={() => handleOpenGamification(children[0].id)}
+            className="btn-primary text-xs shrink-0 flex items-center gap-2 py-2.5 px-4 bg-gradient-to-r from-amber-500 to-indigo-500 hover:opacity-95"
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>Apri Negozio & Premi</span>
+          </button>
+        )}
+      </div>
+
+      {/* Elenco Profili */}
+      {loading ? (
+        <div className="glass-card p-8 animate-pulse text-center text-slate-400">
+          Caricamento profili...
+        </div>
+      ) : children.length === 0 ? (
+        <div className="glass-card p-12 text-center text-slate-400 border-dashed space-y-4">
+          <p>Nessun figlio registrato. Clicca su &quot;+ Aggiungi Profilo&quot; per iniziare.</p>
+          {canAddChild && (
+            <button type="button" onClick={handleStartCreate} className="btn-secondary text-xs">
+              <Plus className="w-4 h-4 mr-1 inline" /> Aggiungi Primo Figlio
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {children.map((child) => (
+            <div key={child.id} className={`glass-card p-5 flex flex-col justify-between gap-4 transition-all ${child.is_suspended ? 'border-slate-800 bg-slate-900/80 shadow-inner' : ''}`}>
+              <div className={`flex items-start justify-between gap-3 ${child.is_suspended ? 'grayscale opacity-50 select-none pointer-events-none' : ''}`}>
+                <div className="flex items-center gap-3">
+                  <ChildAvatarWithBadge
+                    name={child.name}
+                    avatarPresetId={child.avatar_preset_id}
+                    activeBadgeId={child.active_badge_id}
+                    activeFrameId={child.active_frame_id}
+                    cosmeticsMap={cosmeticsMap}
+                    size="md"
+                  />
+                  <div>
+                    <h3 className="font-bold text-white flex items-center gap-1.5">
+                      <span>{child.name}</span>
+                    </h3>
+                    <span className="text-xs font-normal text-slate-400 block">
+                      {child.gender === "boy" ? "👦 Maschio" : child.gender === "girl" ? "👧 Femmina" : "🧒 Neutro"}
+                    </span>
+                    {child.birth_year && (
+                      <p className="text-xs text-slate-400 mt-0.5">Classe {child.birth_year}</p>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div className="flex flex-col gap-2">
-                {(TIER_RANK[childLimitInfo?.tier || "free"] || 1) < TIER_RANK.family && (
-                  <Link href="/billing" className="btn-primary text-xs w-full text-center py-3">
-                    ★ Upgrade Piano
-                  </Link>
-                )}
-                <Link href="/billing#addon" className="btn-secondary text-xs w-full text-center py-2.5 text-amber-300 border-amber-500/40">
-                  + Aggiungi Slot Add-on (€1.99/mese)
-                </Link>
+
+              <div className="flex items-center justify-between pt-3 border-t border-slate-800/80">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2.5 py-1 rounded-full">
+                    ★ {child.adventure_points || 0} pt
+                  </span>
+                  {child.is_suspended && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-300 bg-rose-500/15 border border-rose-500/30 px-2 py-0.5 rounded-full">
+                      <Lock className="w-3 h-3" />
+                      <span>Sospeso</span>
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1">
+                  {child.is_suspended ? (
+                    <button
+                      type="button"
+                      onClick={() => handleReactivateChild(child)}
+                      disabled={suspensionLoading === child.id}
+                      className="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all shadow-sm"
+                      title="Riattiva questo profilo"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                      <span>Riattiva</span>
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenGamification(child.id)}
+                        className="p-2 text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 rounded-xl transition-colors"
+                        title="Negozio Gamification & Contenuti"
+                      >
+                        <Sparkles className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleStartEdit(child)}
+                        className="p-2 text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-xl transition-colors"
+                        title="Modifica profilo"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteChild(child.id)}
+                    className={`p-2 rounded-xl transition-all ${
+                      child.is_suspended
+                        ? "text-slate-500 grayscale opacity-50 hover:grayscale-0 hover:opacity-100 hover:text-rose-400 hover:bg-rose-500/10"
+                        : "text-slate-400 hover:text-rose-400 hover:bg-rose-500/10"
+                    }`}
+                    title="Elimina profilo"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             </div>
-          ) : (
-            <>
+          ))}
+        </div>
+      )}
+
+      {/* Form Dialog/Sheet per Aggiungere o Modificare */}
+      <ResponsiveModal
+        open={isFormOpen}
+        onOpenChange={(open) => {
+          if (!open) handleCancelEdit();
+          setIsFormOpen(open);
+        }}
+        title={editingChildId ? "Modifica Profilo Figlio" : "Aggiungi Profilo Figlio"}
+        description={editingChildId ? "Aggiorna le informazioni o l'avatar del bambino." : "Compila il form per registrare un nuovo lettore in famiglia."}
+      >
+        <form onSubmit={handleAddOrEditChild} className="space-y-4">
           {errorMessage && (
             <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
               {errorMessage}
             </div>
           )}
 
-          <form onSubmit={handleAddOrEditChild} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                Nome Bambino
-              </label>
-              <input
-                type="text"
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="es. Sofia"
-                className="input-field"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                Anno di Nascita
-              </label>
-              <input
-                type="number"
-                required
-                min={2000}
-                max={2100}
-                value={birthYear}
-                onChange={(e) => setBirthYear(e.target.value)}
-                placeholder="es. 2019"
-                className="input-field"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                Genere / Sesso
-              </label>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { id: "neutral", label: "🧒 Neutro" },
-                  { id: "boy", label: "👦 Maschio" },
-                  { id: "girl", label: "👧 Femmina" },
-                ].map((g) => (
-                  <button
-                    key={g.id}
-                    type="button"
-                    onClick={() => {
-                      setGender(g.id);
-                      // Se l'avatar selezionato non è compatibile con il nuovo genere, selezioniamo il primo valido
-                      const valid = avatarPresets.filter(
-                        (a) => !a.gender || a.gender === "neutral" || a.gender === g.id
-                      );
-                      if (valid.length > 0 && !valid.some((v) => v.id === selectedAvatar)) {
-                        setSelectedAvatar(valid[0].id);
-                      }
-                    }}
-                    className={`py-2 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center transition-all ${
-                      gender === g.id
-                        ? "border-indigo-500 bg-indigo-500/20 text-white shadow-md shadow-indigo-500/20 ring-1 ring-indigo-500/50"
-                        : "border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700 hover:text-slate-300"
-                    }`}
-                  >
-                    {g.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                Scegli Avatar Gratuito
-              </label>
-              <div className="grid grid-cols-3 gap-2.5 max-h-56 overflow-y-auto p-1">
-                {(avatarPresets.filter(
-                  (a) => !a.gender || a.gender === "neutral" || a.gender === gender
-                ).length > 0
-                  ? avatarPresets.filter(
-                      (a) => !a.gender || a.gender === "neutral" || a.gender === gender
-                    )
-                  : avatarPresets
-                ).map((avatar) => (
-                  <button
-                    key={avatar.id}
-                    type="button"
-                    onClick={() => setSelectedAvatar(avatar.id)}
-                    className={`p-2.5 rounded-xl border flex flex-col items-center justify-center text-center transition-all ${
-                      selectedAvatar === avatar.id
-                        ? "border-indigo-500 bg-indigo-500/20 text-white shadow-md shadow-indigo-500/20 ring-2 ring-indigo-500/50"
-                        : "border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700 hover:bg-slate-800/50"
-                    }`}
-                  >
-                    <img
-                      src={getAvatarUrl(avatar.id)}
-                      alt={avatar.name}
-                      className="w-12 h-12 object-contain rounded-xl p-1"
-                    />
-                    <span className="block text-[11px] font-medium mt-1 truncate w-full">{avatar.name}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex gap-2 mt-2">
-              <button type="submit" disabled={isCreating} className="btn-primary flex-1">
-                <Sparkles className="w-4 h-4" />
-                <span>{isCreating ? "Salvataggio..." : editingChildId ? "Salva Modifiche" : "Crea Profilo Figlio"}</span>
-              </button>
-              {editingChildId && (
-                <button
-                  type="button"
-                  onClick={handleCancelEdit}
-                  className="btn-secondary px-3 text-xs"
-                >
-                  Annulla
-                </button>
-              )}
-            </div>
-          </form>
-            </>
-          )}
-        </div>
-
-        {/* Elenco Profili */}
-        <div className="lg:col-span-2 space-y-4">
-          {/* Banner Gamification info per i genitori */}
-          <div className="glass-card p-5 border-amber-500/30 bg-gradient-to-r from-amber-500/10 to-indigo-500/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <Sparkles className="w-6 h-6 text-amber-400 shrink-0 mt-0.5" />
-              <div>
-                <h3 className="font-bold text-white text-sm">
-                  Punti Avventura, Gamification & Contenuti Narrativi
-                </h3>
-                <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                  I bambini guadagnano <strong className="text-amber-300">+15 Punti Avventura</strong> per ogni storia completata, oltre a punti bonus con le <strong className="text-indigo-300">Missioni di Lettura</strong>. Con i punti possono sbloccare badge, cornici e <strong className="text-amber-300">tratti e stili narrativi</strong> per tutta la famiglia!
-                </p>
-              </div>
-            </div>
-            {children.length > 0 && (
-              <button
-                type="button"
-                onClick={() => handleOpenGamification(children[0].id)}
-                className="btn-primary text-xs shrink-0 flex items-center gap-2 py-2.5 px-4 bg-gradient-to-r from-amber-500 to-indigo-500 hover:opacity-95"
-              >
-                <Sparkles className="w-4 h-4" />
-                <span>Apri Negozio & Premi</span>
-              </button>
-            )}
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+              Nome Bambino
+            </label>
+            <input
+              type="text"
+              required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="es. Sofia"
+              className="input-field"
+            />
           </div>
 
-          {loading ? (
-            <div className="glass-card p-8 animate-pulse text-center text-slate-400">
-              Caricamento profili...
-            </div>
-          ) : children.length === 0 ? (
-            <div className="glass-card p-12 text-center text-slate-400">
-              Nessun figlio registrato. Usa il form a sinistra per aggiungere il primo profilo.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {children.map((child) => (
-                <div key={child.id} className={`glass-card p-5 flex items-center justify-between transition-all ${child.is_suspended ? 'border-slate-800 bg-slate-900/80 shadow-inner' : ''}`}>
-                  <div className={`flex items-center gap-3 ${child.is_suspended ? 'grayscale opacity-50 select-none pointer-events-none' : ''}`}>
-                    <ChildAvatarWithBadge
-                      name={child.name}
-                      avatarPresetId={child.avatar_preset_id}
-                      activeBadgeId={child.active_badge_id}
-                      activeFrameId={child.active_frame_id}
-                      cosmeticsMap={cosmeticsMap}
-                      size="md"
-                    />
-                    <div>
-                      <h3 className="font-bold text-white flex items-center gap-1.5">
-                        <span>{child.name}</span>
-                        <span className="text-xs font-normal text-slate-400">
-                          ({child.gender === "boy" ? "👦 Maschio" : child.gender === "girl" ? "👧 Femmina" : "🧒 Neutro"})
-                        </span>
-                      </h3>
-                      {child.birth_year && (
-                        <p className="text-xs text-slate-400">Classe {child.birth_year}</p>
-                      )}
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full">
-                          ★ {child.adventure_points || 0} pt
-                        </span>
-                        {child.is_suspended && (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-300 bg-rose-500/15 border border-rose-500/30 px-2 py-0.5 rounded-full">
-                            <Lock className="w-3 h-3" />
-                            <span>Sospeso</span>
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+              Anno di Nascita
+            </label>
+            <input
+              type="number"
+              required
+              min={2000}
+              max={2100}
+              value={birthYear}
+              onChange={(e) => setBirthYear(e.target.value)}
+              placeholder="es. 2019"
+              className="input-field"
+            />
+          </div>
 
-                  <div className="flex items-center gap-1 z-10">
-                    {child.is_suspended ? (
-                      <button
-                        type="button"
-                        onClick={() => handleReactivateChild(child)}
-                        disabled={suspensionLoading === child.id}
-                        className="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all shadow-sm"
-                        title="Riattiva questo profilo (richiede capienza nel piano)"
-                      >
-                        <Play className="w-3.5 h-3.5 fill-current" />
-                        <span>Riattiva</span>
-                      </button>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => handleOpenGamification(child.id)}
-                          className="p-2 text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 rounded-xl transition-colors"
-                          title="Negozio Gamification & Contenuti"
-                        >
-                          <Sparkles className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleStartEdit(child)}
-                          className="p-2 text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-xl transition-colors"
-                          title="Modifica profilo"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                      </>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteChild(child.id)}
-                      className={`p-2 rounded-xl transition-all ${
-                        child.is_suspended
-                          ? "text-slate-500 grayscale opacity-50 hover:grayscale-0 hover:opacity-100 hover:text-rose-400 hover:bg-rose-500/10"
-                          : "text-slate-400 hover:text-rose-400 hover:bg-rose-500/10"
-                      }`}
-                      title="Elimina profilo"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+              Genere / Sesso
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { id: "neutral", label: "🧒 Neutro" },
+                { id: "boy", label: "👦 Maschio" },
+                { id: "girl", label: "👧 Femmina" },
+              ].map((g) => (
+                <button
+                  key={g.id}
+                  type="button"
+                  onClick={() => {
+                    setGender(g.id);
+                    const valid = avatarPresets.filter(
+                      (a) => !a.gender || a.gender === "neutral" || a.gender === g.id
+                    );
+                    if (valid.length > 0 && !valid.some((v) => v.id === selectedAvatar)) {
+                      setSelectedAvatar(valid[0].id);
+                    }
+                  }}
+                  className={`py-2 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center transition-all ${
+                    gender === g.id
+                      ? "border-indigo-500 bg-indigo-500/20 text-white shadow-md shadow-indigo-500/20 ring-1 ring-indigo-500/50"
+                      : "border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700 hover:text-slate-300"
+                  }`}
+                >
+                  {g.label}
+                </button>
               ))}
             </div>
-          )}
-        </div>
-      </div>
+          </div>
 
-      <ConfirmationModal
-        isOpen={Boolean(deleteChildId)}
-        title="Conferma Eliminazione Profilo"
-        message="Sei sicuro di voler eliminare definitivamente questo profilo bambino e tutte le sue impostazioni?"
-        confirmLabel="Elimina Profilo"
-        variant="danger"
-        isLoading={deleting}
-        onConfirm={() => deleteChildId && executeDeleteChild(deleteChildId)}
-        onClose={() => setDeleteChildId(null)}
-      />
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+              Scegli Avatar Gratuito
+            </label>
+            <div className="grid grid-cols-3 gap-2.5 max-h-56 overflow-y-auto p-1">
+              {(avatarPresets.filter(
+                (a) => !a.gender || a.gender === "neutral" || a.gender === gender
+              ).length > 0
+                ? avatarPresets.filter(
+                    (a) => !a.gender || a.gender === "neutral" || a.gender === gender
+                  )
+                : avatarPresets
+              ).map((avatar) => (
+                <button
+                  key={avatar.id}
+                  type="button"
+                  onClick={() => setSelectedAvatar(avatar.id)}
+                  className={`p-2.5 rounded-xl border flex flex-col items-center justify-center text-center transition-all ${
+                    selectedAvatar === avatar.id
+                      ? "border-indigo-500 bg-indigo-500/20 text-white shadow-md shadow-indigo-500/20 ring-2 ring-indigo-500/50"
+                      : "border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700 hover:bg-slate-800/50"
+                  }`}
+                >
+                  <img
+                    src={getAvatarUrl(avatar.id)}
+                    alt={avatar.name}
+                    className="w-12 h-12 object-contain rounded-xl p-1"
+                  />
+                  <span className="block text-[11px] font-medium mt-1 truncate w-full">{avatar.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <button type="submit" disabled={isCreating} className="btn-primary flex-1">
+              <Sparkles className="w-4 h-4" />
+              <span>{isCreating ? "Salvataggio..." : editingChildId ? "Salva Modifiche" : "Crea Profilo Figlio"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsFormOpen(false)}
+              className="btn-secondary px-4 text-xs"
+            >
+              Annulla
+            </button>
+          </div>
+        </form>
+      </ResponsiveModal>
+
+      <AlertDialog open={Boolean(deleteChildId)} onOpenChange={(open) => !open && setDeleteChildId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Conferma Eliminazione Profilo</AlertDialogTitle>
+            <AlertDialogDescription>
+              Sei sicuro di voler eliminare definitivamente questo profilo bambino e tutte le sue impostazioni e storie assegnate? L&apos;azione non può essere annullata.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annulla</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteChildId && executeDeleteChild(deleteChildId)}
+              disabled={deleting}
+              className="bg-rose-600 hover:bg-rose-700 text-white focus:ring-rose-500"
+            >
+              {deleting ? "Eliminazione..." : "Elimina Profilo"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <GamificationModal
         isOpen={showGamificationModal && Boolean(gamificationData)}

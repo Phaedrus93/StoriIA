@@ -328,11 +328,11 @@ describe("V2 Phase 6: Gift Codes (Regalo Crediti e Abbonamento)", () => {
     expect(famRes.rows[0].gift_subscription_expires_at).toBeNull();
     expect(famRes.rows[0].pre_gift_tier).toBeNull();
 
-    // Verifica che enforceSuspensionOnDowngrade abbia sospeso i profili eccedenti (Bimbo2, Bimbo3, Bimbo4 sospesi; Bimbo1 rimane attivo)
+    // Verifica che enforceSuspensionOnDowngrade lasci i profili attivi (soft limit) per richiedere la scelta al genitore tramite modale bloccante
     const activeChildrenRes = await db.query(`SELECT count(*) as active_cnt FROM public.child_profiles WHERE family_id = '${redeemerFamilyId}' AND is_suspended = false`);
-    expect(Number(activeChildrenRes.rows[0].active_cnt)).toBe(1);
+    expect(Number(activeChildrenRes.rows[0].active_cnt)).toBe(4);
 
     const suspendedChildrenRes = await db.query(`SELECT count(*) as susp_cnt FROM public.child_profiles WHERE family_id = '${redeemerFamilyId}' AND is_suspended = true`);
-    expect(Number(suspendedChildrenRes.rows[0].susp_cnt)).toBe(3);
+    expect(Number(suspendedChildrenRes.rows[0].susp_cnt)).toBe(0);
   });
 });

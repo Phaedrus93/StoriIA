@@ -22,18 +22,46 @@ import {
   Moon,
   Sliders,
   Type,
+  ArrowRight,
+  ChevronRight,
+  ArrowLeft,
+  Crown,
 } from "lucide-react";
-import ConfirmationModal from "@/components/ConfirmationModal";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from "@/components/ui/alert-dialog";
 
 function SettingsPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const activeTabParam = searchParams.get("tab") || "account";
+  const activeTabParam = searchParams.get("tab") || "profile";
   const [activeTab, setActiveTab] = useState<string>(activeTabParam);
+  const [mobileView, setMobileView] = useState<"list" | "detail">(
+    searchParams.get("tab") ? "detail" : "list"
+  );
 
   const supabase = createClient();
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState<string>("");
+
+  // Tab 0: Profilo Genitore
+  const [parentDisplayName, setParentDisplayName] = useState("");
+  const [parentRole, setParentRole] = useState("Genitore");
+  const [parentAvatarPresetId, setParentAvatarPresetId] = useState<string | null>(null);
+  const [parentEquippedBadgeId, setParentEquippedBadgeId] = useState<string | null>(null);
+  const [parentEquippedFrameId, setParentEquippedFrameId] = useState<string | null>(null);
+  const [parentPresets, setParentPresets] = useState<any[]>([]);
+  const [parentBadges, setParentBadges] = useState<any[]>([]);
+  const [parentFrames, setParentFrames] = useState<any[]>([]);
+  const [updatingParentProfile, setUpdatingParentProfile] = useState(false);
+  const [parentProfileStatus, setParentProfileStatus] = useState<{ type: "success" | "error"; msg: string } | null>(null);
 
   // Tab 1: Account (Password & Billing Profile)
   const [currentPassword, setCurrentPassword] = useState("");
@@ -87,7 +115,11 @@ function SettingsPageContent() {
   const [deleteStatus, setDeleteStatus] = useState<{ type: "error"; msg: string } | null>(null);
 
   useEffect(() => {
-    setActiveTab(searchParams.get("tab") || "account");
+    const tab = searchParams.get("tab") || "profile";
+    setActiveTab(tab);
+    if (searchParams.get("tab")) {
+      setMobileView("detail");
+    }
   }, [searchParams]);
 
   useEffect(() => {
@@ -102,6 +134,25 @@ function SettingsPageContent() {
     }
 
     try {
+      // Caricamento Profilo Genitore e Cosmetici/Presets per il genitore
+      const [profRes, presetsRes, cosmRes] = await Promise.all([
+        fetch("/api/family/profile", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+        supabase.from("avatar_presets").select("*").in("category", ["parent", "general"]).order("name"),
+        supabase.from("cosmetic_items").select("*").in("type", ["badge", "frame"]),
+      ]);
+
+      if (profRes?.profile) {
+        setParentDisplayName(profRes.profile.parent_display_name || "Genitore StoriIA");
+        setParentRole(profRes.profile.parent_role || "Genitore");
+        setParentAvatarPresetId(profRes.profile.parent_avatar_preset_id || null);
+        setParentEquippedBadgeId(profRes.profile.parent_equipped_badge_id || null);
+        setParentEquippedFrameId(profRes.profile.parent_equipped_frame_id || null);
+      }
+      if (presetsRes.data) setParentPresets(presetsRes.data);
+      if (cosmRes.data) {
+        setParentBadges(cosmRes.data.filter((i: any) => i.type === "badge"));
+        setParentFrames(cosmRes.data.filter((i: any) => i.type === "frame"));
+      }
       // Caricamento profilo fatturazione
       const bpRes = await fetch("/api/family/billing-profile");
       if (bpRes.ok) {
@@ -185,6 +236,32 @@ function SettingsPageContent() {
       setBrightness(found.brightness || 100);
       setContrast(found.contrast || 100);
       setFontSize(found.font_size || "medium");
+    }
+  };
+
+  const handleUpdateParentProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setParentProfileStatus(null);
+    setUpdatingParentProfile(true);
+    try {
+      const res = await fetch("/api/family/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          parent_display_name: parentDisplayName,
+          parent_role: parentRole,
+          parent_avatar_preset_id: parentAvatarPresetId,
+          parent_equipped_badge_id: parentEquippedBadgeId,
+          parent_equipped_frame_id: parentEquippedFrameId,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Impossibile aggiornare il profilo genitore.");
+      setParentProfileStatus({ type: "success", msg: "Profilo genitore aggiornato con successo!" });
+    } catch (err: any) {
+      setParentProfileStatus({ type: "error", msg: err.message });
+    } finally {
+      setUpdatingParentProfile(false);
     }
   };
 
@@ -424,65 +501,209 @@ function SettingsPageContent() {
   };
 
   const tabs = [
-    { id: "account", label: "Account", icon: UserCog },
-    { id: "security", label: "Sicurezza Modalità Bambino", icon: ShieldCheck },
-    { id: "billing", label: "Fatturazione e Abbonamento", icon: CreditCard },
-    { id: "notifications", label: "Notifiche", icon: Bell },
-    { id: "accessibility", label: "Accessibilità e Lettura", icon: Eye },
-    { id: "privacy", label: "Dati e Privacy", icon: Lock },
+    {
+      id: "profile",
+      label: "Profilo Genitore",
+      description: "Personalizza nome, ruolo, avatar e cornici del tuo profilo guida",
+      icon: Crown,
+    },
+    {
+      id: "account",
+      label: "Account e Sicurezza",
+      description: "Email, cambio password e dati anagrafici di fatturazione",
+      icon: UserCog,
+    },
+    {
+      id: "security",
+      label: "Sicurezza Modalità Bambino",
+      description: "Imposta il PIN numerico per proteggere il ritorno all'area genitore",
+      icon: ShieldCheck,
+    },
+    {
+      id: "billing",
+      label: "Fatturazione e Abbonamento",
+      description: "Gestione piano, crediti AI residui e storico pagamenti",
+      icon: CreditCard,
+    },
+    {
+      id: "notifications",
+      label: "Preferenze Notifiche",
+      description: "Gestisci gli avvisi via email per crediti in esaurimento e report attività",
+      icon: Bell,
+    },
+    {
+      id: "accessibility",
+      label: "Accessibilità e Lettura",
+      description: "Adatta la dimensione dei caratteri, il contrasto e la modalità notte per i bambini",
+      icon: Eye,
+    },
+    {
+      id: "privacy",
+      label: "Dati e Privacy GDPR",
+      description: "Esportazione dati, consenso e opzioni di cancellazione account",
+      icon: Lock,
+    },
   ];
 
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64 text-slate-400">
         <Sparkles className="w-8 h-8 animate-spin text-indigo-500 mr-2" />
-        Caricamento impostazioni...
+        Caricamento hub impostazioni...
       </div>
     );
   }
 
-  return (
-    <div className="max-w-6xl mx-auto space-y-8">
-      <div>
-        <h1 className="text-3xl font-extrabold text-white flex items-center gap-3">
-          <UserCog className="w-8 h-8 text-indigo-400" />
-          Impostazioni Unificate
-        </h1>
-        <p className="text-slate-400 mt-1">
-          Gestisci da un unico hub il tuo account, la sicurezza dei bambini, l&apos;abbonamento e le preferenze.
-        </p>
-      </div>
+  const renderTabContent = () => (
+    <>
+      {/* 0. TAB PROFILO GENITORE */}
+      {activeTab === "profile" && (
+        <form onSubmit={handleUpdateParentProfile} className="space-y-8 animate-fadeIn">
+          <div className="border-b border-slate-800 pb-4">
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <Crown className="w-5 h-5 text-amber-400" />
+              <span>Profilo Genitore Guida</span>
+            </h2>
+            <p className="text-slate-400 text-sm mt-1">
+              Personalizza la tua identità e il tuo ruolo narrativo all&apos;interno della famiglia StoriIA.
+            </p>
+          </div>
 
-      <div className="flex flex-col md:flex-row gap-6">
-        {/* Sidebar Tabs (Desktop) / Select (Mobile) */}
-        <aside className="w-full md:w-64 shrink-0 space-y-1">
-          {tabs.map((t) => {
-            const Icon = t.icon;
-            const isActive = activeTab === t.id;
-            return (
-              <button
-                key={t.id}
-                onClick={() => {
-                  setActiveTab(t.id);
-                  router.replace(`/settings?tab=${t.id}`);
-                }}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all text-left ${
-                  isActive
-                    ? "bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-500/20"
-                    : "bg-slate-900/60 hover:bg-slate-800 text-slate-300 border border-slate-800/80"
-                }`}
+          {parentProfileStatus && (
+            <div
+              className={`p-4 rounded-xl text-sm font-semibold flex items-center gap-2 ${
+                parentProfileStatus.type === "success"
+                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                  : "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+              }`}
+            >
+              {parentProfileStatus.msg}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                Nome Visualizzato
+              </label>
+              <input
+                type="text"
+                required
+                value={parentDisplayName}
+                onChange={(e) => setParentDisplayName(e.target.value)}
+                placeholder="es. Mamma Chiara, Papà Marco"
+                className="input-field"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                Ruolo in Famiglia
+              </label>
+              <select
+                value={parentRole}
+                onChange={(e) => setParentRole(e.target.value)}
+                className="input-field bg-slate-900"
               >
-                <Icon className={`w-5 h-5 ${isActive ? "text-white" : "text-indigo-400"}`} />
-                {t.label}
-              </button>
-            );
-          })}
-        </aside>
+                <option value="Genitore">Genitore</option>
+                <option value="Mamma">Mamma</option>
+                <option value="Papà">Papà</option>
+                <option value="Nonno">Nonno</option>
+                <option value="Nonna">Nonna</option>
+                <option value="Zio">Zio</option>
+                <option value="Zia">Zia</option>
+                <option value="Narratore Guida">Narratore Guida</option>
+              </select>
+            </div>
+          </div>
 
-        {/* Content Area */}
-        <main className="flex-1 bg-slate-900/80 border border-slate-800 rounded-3xl p-6 md:p-8 space-y-8 shadow-xl">
-          {/* 1. TAB ACCOUNT */}
-          {activeTab === "account" && (
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+              Scegli Avatar Genitore
+            </label>
+            {parentPresets.length === 0 ? (
+              <p className="text-xs text-slate-500">Nessun avatar preimpostato disponibile al momento.</p>
+            ) : (
+              <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 gap-3 max-h-52 overflow-y-auto p-2 bg-slate-950/60 rounded-2xl border border-slate-800">
+                {parentPresets.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => setParentAvatarPresetId(preset.id)}
+                    className={`relative rounded-xl p-1.5 transition-all flex flex-col items-center ${
+                      parentAvatarPresetId === preset.id
+                        ? "bg-indigo-600/30 border-2 border-indigo-500 shadow-md"
+                        : "bg-slate-900/60 hover:bg-slate-800 border border-slate-800"
+                    }`}
+                  >
+                    <img src={preset.image_url} alt={preset.name} className="w-12 h-12 rounded-lg object-cover" />
+                    <span className="text-[10px] text-slate-300 mt-1 truncate w-full text-center">{preset.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Badge & Cornici Genitore se disponibili */}
+          {(parentBadges.length > 0 || parentFrames.length > 0) && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-2">
+              {parentBadges.length > 0 && (
+                <div>
+                  <label className="block text-xs font-bold text-amber-400 uppercase tracking-wider mb-2">
+                    ★ Badge Equipaggiato
+                  </label>
+                  <select
+                    value={parentEquippedBadgeId || ""}
+                    onChange={(e) => setParentEquippedBadgeId(e.target.value || null)}
+                    className="input-field bg-slate-900 text-xs"
+                  >
+                    <option value="">Nessun badge</option>
+                    {parentBadges.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {parentFrames.length > 0 && (
+                <div>
+                  <label className="block text-xs font-bold text-pink-400 uppercase tracking-wider mb-2">
+                    🖼️ Cornice Avatar Equipaggiata
+                  </label>
+                  <select
+                    value={parentEquippedFrameId || ""}
+                    onChange={(e) => setParentEquippedFrameId(e.target.value || null)}
+                    className="input-field bg-slate-900 text-xs"
+                  >
+                    <option value="">Nessuna cornice</option>
+                    {parentFrames.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="pt-4">
+            <button
+              type="submit"
+              disabled={updatingParentProfile}
+              className="btn-primary py-3 px-6 text-sm font-bold shadow-lg shadow-indigo-500/20"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>{updatingParentProfile ? "Salvataggio in corso..." : "Salva Profilo Genitore"}</span>
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* 1. TAB ACCOUNT */}
+      {activeTab === "account" && (
             <div className="space-y-8 animate-fadeIn">
               <div className="border-b border-slate-800 pb-4">
                 <h2 className="text-xl font-bold text-white flex items-center gap-2">
@@ -1052,54 +1273,52 @@ function SettingsPageContent() {
 
           {/* 6. TAB DATI & PRIVACY */}
           {activeTab === "privacy" && (
-            <div className="space-y-6 animate-fadeIn">
-              <div>
+            <div className="space-y-8 animate-fadeIn">
+              <div className="border-b border-slate-800 pb-4">
                 <h2 className="text-xl font-bold text-white flex items-center gap-2">
                   <Lock className="w-5 h-5 text-indigo-400" />
-                  Dati e Privacy GDPR
+                  Dati e Privacy (GDPR)
                 </h2>
                 <p className="text-slate-400 text-sm mt-1">
-                  Esporta l&apos;intero archivio delle tue storie e dei profili familiari o procedi con la cancellazione definitiva.
+                  Hai il controllo completo sui dati di navigazione, le storie generate e le informazioni salvate.
                 </p>
               </div>
 
-              {deleteStatus && (
-                <div className="p-4 rounded-xl bg-rose-500/20 border border-rose-500/30 text-rose-300 text-sm font-semibold">
-                  {deleteStatus.msg}
-                </div>
-              )}
-
-              <div className="space-y-4">
-                {/* Export Dati */}
-                <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div className="space-y-1">
-                    <h3 className="text-base font-bold text-white flex items-center gap-2">
-                      <Download className="w-5 h-5 text-emerald-400" />
-                      Esporta Dati Famiglia (JSON)
-                    </h3>
-                    <p className="text-slate-400 text-xs md:text-sm">
-                      Scarica un file strutturato contenente tutte le storie generate, i personaggi, le ambientazioni e l&apos;audit log.
+              {/* Download Dati */}
+              <div className="glass-card p-6 border-slate-800/80 space-y-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="font-bold text-white text-base">Esporta i tuoi Dati (Art. 20 GDPR)</h3>
+                    <p className="text-slate-400 text-xs md:text-sm mt-1">
+                      Richiedi un archivio JSON completo con tutte le tue storie generate, i profili dei tuoi figli e i dettagli di fatturazione.
                     </p>
                   </div>
                   <a
                     href="/api/family/export"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs md:text-sm transition-all flex items-center justify-center gap-2 shrink-0"
+                    className="btn-secondary text-xs md:text-sm flex items-center gap-2 shrink-0"
                   >
                     <Download className="w-4 h-4" />
-                    Scarica Archivio Dati
+                    Richiedi Archivio
                   </a>
                 </div>
+              </div>
 
-                {/* Eliminazione Account */}
-                <div className="p-6 rounded-2xl bg-rose-950/20 border border-rose-900/40 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div className="space-y-1">
-                    <h3 className="text-base font-bold text-rose-400 flex items-center gap-2">
-                      <Trash2 className="w-5 h-5 text-rose-400" />
+              {/* Cancellazione Account */}
+              <div className="glass-card p-6 border-rose-500/30 bg-rose-950/10 space-y-4">
+                {deleteStatus && (
+                  <div className="p-3 rounded-xl bg-rose-500/20 text-rose-300 text-xs border border-rose-500/30">
+                    {deleteStatus.msg}
+                  </div>
+                )}
+                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                  <div>
+                    <h3 className="font-bold text-rose-400 text-base flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4" />
                       Elimina Definitivamente Account
                     </h3>
-                    <p className="text-slate-400 text-xs md:text-sm">
+                    <p className="text-slate-400 text-xs md:text-sm mt-1">
                       L&apos;eliminazione cancellerà subito l&apos;abbonamento Stripe, i profili bambino e l&apos;intero catalogo di storie in modo irreversibile.
                     </p>
                   </div>
@@ -1115,19 +1334,141 @@ function SettingsPageContent() {
               </div>
             </div>
           )}
+    </>
+  );
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-8">
+      <div>
+        <h1 className="text-3xl font-extrabold text-white flex items-center gap-3">
+          <UserCog className="w-8 h-8 text-indigo-400" />
+          <span>Impostazioni Unificate</span>
+        </h1>
+        <p className="text-slate-400 mt-1">
+          Gestisci da un unico hub il tuo account, la sicurezza dei bambini, l&apos;abbonamento e le preferenze.
+        </p>
+      </div>
+
+      {/* 1. Vista Desktop: Tabs verticali a sinistra, Contenuto a destra */}
+      <div className="hidden md:flex gap-8 items-start">
+        <aside className="w-72 shrink-0 space-y-1.5 sticky top-24">
+          {tabs.map((t) => {
+            const Icon = t.icon;
+            const isActive = activeTab === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => {
+                  setActiveTab(t.id);
+                  router.replace(`/settings?tab=${t.id}`);
+                }}
+                className={`w-full flex items-center gap-3 p-3.5 rounded-2xl transition-all text-left group ${
+                  isActive
+                    ? "bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-500/25 border border-indigo-400/30"
+                    : "bg-slate-900/60 hover:bg-slate-800 text-slate-300 border border-slate-800/80"
+                }`}
+              >
+                <div
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-all ${
+                    isActive ? "bg-white/20 text-white" : "bg-slate-800 text-indigo-400 group-hover:bg-slate-700"
+                  }`}
+                >
+                  <Icon className="w-5 h-5" />
+                </div>
+                <div className="overflow-hidden">
+                  <div className="font-bold text-sm leading-tight text-white">{t.label}</div>
+                </div>
+              </button>
+            );
+          })}
+        </aside>
+
+        <main className="flex-1 bg-slate-900/80 border border-slate-800 rounded-3xl p-8 space-y-8 shadow-2xl">
+          {renderTabContent()}
         </main>
       </div>
 
-      <ConfirmationModal
-        isOpen={deleteModalOpen}
-        title="Conferma Eliminazione Account"
-        message="Questa azione è irreversibile. Tutte le storie, i profili bambino, i badge sbloccati e l'abbonamento verranno cancellati per sempre dal database a norma GDPR. Vuoi procedere?"
-        confirmLabel="Sì, elimina tutto definitivamente"
-        cancelLabel="Annulla"
-        onConfirm={handleDeleteAccount}
-        onCancel={() => setDeleteModalOpen(false)}
-        variant="danger"
-      />
+      {/* 2. Vista Mobile (iOS/Android Native Style): Master List o Dettaglio */}
+      <div className="md:hidden">
+        {mobileView === "list" && !searchParams.get("tab") ? (
+          <div className="space-y-4">
+            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">
+              Sezioni di Configurazione
+            </div>
+            <div className="glass-card rounded-3xl divide-y divide-slate-800/80 overflow-hidden border border-slate-800">
+              {tabs.map((t) => {
+                const Icon = t.icon;
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => {
+                      setActiveTab(t.id);
+                      setMobileView("detail");
+                      router.push(`/settings?tab=${t.id}`);
+                    }}
+                    className="w-full flex items-center justify-between p-4.5 hover:bg-slate-800/50 transition-colors text-left group"
+                  >
+                    <div className="flex items-center gap-3.5 pr-2">
+                      <div className="w-10 h-10 rounded-2xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0 group-hover:scale-105 transition-transform">
+                        <Icon className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-sm text-white group-hover:text-indigo-300 transition-colors">
+                          {t.label}
+                        </div>
+                        <div className="text-xs text-slate-400 line-clamp-1 leading-normal mt-0.5">
+                          {t.description}
+                        </div>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-slate-500 shrink-0 group-hover:text-white group-hover:translate-x-0.5 transition-all" />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <button
+              type="button"
+              onClick={() => {
+                setMobileView("list");
+                router.push("/settings");
+              }}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 text-xs font-bold hover:text-white hover:bg-slate-800 transition-colors shadow-md"
+            >
+              <ArrowLeft className="w-4 h-4 text-indigo-400" />
+              <span>← Tutte le impostazioni</span>
+            </button>
+            <div className="glass-card p-6 border-slate-800 rounded-3xl space-y-6 shadow-xl">
+              {renderTabContent()}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <AlertDialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-rose-400">
+              <AlertTriangle className="w-5 h-5" />
+              <span>Conferma Eliminazione Account</span>
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Questa azione è irreversibile. Tutte le storie, i profili bambino, i badge sbloccati e l&apos;abbonamento verranno cancellati per sempre dal database a norma GDPR. Vuoi procedere?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annulla</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteAccount}
+              className="bg-rose-600 hover:bg-rose-700 text-white focus:ring-rose-500"
+            >
+              Sì, elimina tutto definitivamente
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

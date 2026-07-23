@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { AlertTriangle, CheckCircle2, X, Send } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Send } from "lucide-react";
+import { ResponsiveModal } from "@/components/ui/responsive-modal";
 
 interface ContentReportModalProps {
   isOpen: boolean;
@@ -90,15 +91,15 @@ export default function ContentReportModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="max-w-md w-full glass-card p-6 border-amber-500/30 space-y-5 shadow-2xl relative">
-        <button
-          type="button"
-          onClick={handleResetAndClose}
-          className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors"
-        >
-          <X className="w-5 h-5" />
-        </button>
+    <ResponsiveModal
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) handleResetAndClose();
+      }}
+      title="Segnala Contenuto"
+      description={`Segnalazione per: ${storyTitle}`}
+    >
+      <div className="space-y-5">
 
         {success ? (
           <div className="text-center py-6 space-y-4">
@@ -211,6 +212,6 @@ export default function ContentReportModal({
           </form>
         )}
       </div>
-    </div>
+    </ResponsiveModal>
   );
 }

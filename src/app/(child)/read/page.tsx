@@ -54,15 +54,6 @@ export default function ChildReaderPage() {
   const [loading, setLoading] = useState(true);
   const [loadingPdfId, setLoadingPdfId] = useState<string | null>(null);
 
-  const storyPages = useMemo(() => {
-    if (!activeStory) return [];
-    // Rimuoviamo l'eventuale riga del titolo # Titolo prima di paginare
-    const cleanBody = activeStory.generated_text
-      .replace(/^#+\s*[^\r\n]+(\r?\n)*/, "")
-      .trim();
-    return paginateText(cleanBody || activeStory.generated_text, 450);
-  }, [activeStory]);
-
   // Modale PIN Uscita
   const [showExitModal, setShowExitModal] = useState(false);
   const [pinInput, setPinInput] = useState("");
@@ -88,6 +79,34 @@ export default function ChildReaderPage() {
   const [readingFontSize, setReadingFontSize] = useState<string>("medium");
   const [showAccessibilityModal, setShowAccessibilityModal] = useState<boolean>(false);
   const [isChildModeSession, setIsChildModeSession] = useState<boolean>(true);
+
+  const maxCharsPerPage = useMemo(() => {
+    switch (readingFontSize) {
+      case "small":
+        return 600;
+      case "large":
+        return 260;
+      case "xlarge":
+        return 140; // ~20-25 parole per pagina per evitare qualsiasi scrollbar o overflow con testo gigante A++
+      default:
+        return 420; // medium
+    }
+  }, [readingFontSize]);
+
+  const storyPages = useMemo(() => {
+    if (!activeStory) return [];
+    // Rimuoviamo l'eventuale riga del titolo # Titolo prima di paginare
+    const cleanBody = activeStory.generated_text
+      .replace(/^#+\s*[^\r\n]+(\r?\n)*/, "")
+      .trim();
+    return paginateText(cleanBody || activeStory.generated_text, maxCharsPerPage);
+  }, [activeStory, maxCharsPerPage]);
+
+  useEffect(() => {
+    if (storyPages.length > 0 && currentPageIdx >= storyPages.length) {
+      setCurrentPageIdx(storyPages.length - 1);
+    }
+  }, [storyPages, currentPageIdx]);
 
   const supabase = createClient();
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -353,7 +372,7 @@ export default function ChildReaderPage() {
     const cleanBody = item.generated_text
       .replace(/^#+\s*[^\r\n]+(\r?\n)*/, "")
       .trim();
-    const pages = paginateText(cleanBody || item.generated_text, 450);
+    const pages = paginateText(cleanBody || item.generated_text, maxCharsPerPage);
     let startIdx = 0;
     if (item.last_read_position > 0 && pages.length > 0) {
       startIdx = Math.min(pages.length - 1, item.last_read_position);
@@ -526,161 +545,96 @@ export default function ChildReaderPage() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white p-4 md:p-8 space-y-8">
-      {/* Intestazione Bambino Esclusiva */}
-      <div className="flex flex-col md:flex-row items-center justify-between gap-4 glass-card p-5 border-emerald-500/30">
-        <div className="flex items-center gap-3">
-          <ChildAvatarWithBadge
-            name={children.find((c) => c.id === selectedChildId)?.name || "Bambino"}
-            avatarPresetId={children.find((c) => c.id === selectedChildId)?.avatar_preset_id}
-            activeBadgeId={activeBadgeId}
-            activeFrameId={activeFrameId}
-            cosmeticsMap={Object.fromEntries(cosmetics.map(c => [c.id, c.icon_preset]))}
-            size="md"
-            imgClassName="border-emerald-500/40 shadow-lg"
-          />
-          <div>
-            <h1 className="text-xl font-black text-white flex items-center gap-1.5">
-              Libreria di {children.find((c) => c.id === selectedChildId)?.name || "Favole"}
-              {activeBadgeId && (
-                <span className="text-base" title="Badge equipaggiato">
-                  {getCosmeticIcon(cosmetics.find(c => c.id === activeBadgeId)?.icon_preset)}
-                </span>
-              )}
-            </h1>
-            <p className="text-xs text-emerald-300">
-              Esplora e leggi le storie magiche assegnate a te
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowAccessibilityModal(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-bold text-indigo-300 hover:text-indigo-200 transition-all shrink-0 shadow-sm"
-            title="Regola Comfort e Accessibilità di Lettura"
-          >
-            <Eye className="w-4 h-4 text-indigo-400" />
-            <span className="hidden sm:inline">Aspetto</span>
-          </button>
-
-          <button
-            onClick={() => setShowRewardsModal(true)}
-            className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-amber-500/20 to-indigo-500/20 hover:from-amber-500/30 hover:to-indigo-500/30 border border-amber-400/50 text-amber-300 transition-all font-bold text-xs md:text-sm shadow-lg hover:scale-105"
-          >
-            <Sparkles className="w-5 h-5 text-amber-400 animate-pulse" />
-            <span>★ {adventurePoints} Punti — Missioni & Premi</span>
-          </button>
-
-          <button
-            onClick={() => setShowExitModal(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-semibold text-slate-300 transition-colors shrink-0"
-          >
-            <Lock className="w-4 h-4 text-amber-400" />
-            <span>Esci al Genitore</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Banner di suggerimento rapido per i Punti Avventura */}
-      <div className="glass-card p-4 border-amber-500/30 bg-gradient-to-r from-amber-500/10 via-emerald-500/10 to-indigo-500/10 flex items-center justify-between text-xs text-slate-200">
-        <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-          <span>
-            <strong>Come accumulare punti:</strong> Leggi una storia fino all&apos;ultima pagina per ricevere <strong>+15 Punti Avventura</strong> e completare le missioni speciali!
-          </span>
-        </div>
-        <button
-          onClick={() => setShowRewardsModal(true)}
-          className="text-amber-300 font-bold hover:underline shrink-0 ml-3"
-        >
-          Apri Negozio & Missioni →
-        </button>
-      </div>
-
-      {/* Reader Storia Attiva o Elenco */}
-      {/* Reader Storia Attiva (Paginata) o Elenco */}
+    <>
       {activeStory ? (
-        <div className="glass-card p-6 md:p-12 border-emerald-500/40 space-y-8 max-w-4xl mx-auto">
-          <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
+        <div className="fixed inset-0 z-50 bg-slate-950 text-white flex flex-col justify-between overflow-hidden select-none animate-fadeIn">
+          {/* Top Bar Compatta e Immersiva */}
+          <div className="shrink-0 px-4 md:px-8 py-3 bg-slate-900/90 border-b border-slate-800/80 backdrop-blur-md flex items-center justify-between gap-4">
             <button
               onClick={() => setActiveStory(null)}
-              className="flex items-center gap-2 text-xs font-semibold text-slate-400 hover:text-white transition-colors"
+              className="flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/60 text-xs md:text-sm font-bold text-slate-200 hover:text-white transition-all shadow-sm shrink-0"
             >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Torna all&apos;elenco storie</span>
+              <ArrowLeft className="w-4 h-4 text-emerald-400" />
+              <span>Torna indietro</span>
             </button>
-            <div className="flex items-center gap-3">
+
+            <div className="flex items-center gap-2.5 min-w-0">
+              <h1 className="text-sm md:text-lg font-black text-emerald-300 truncate">
+                {activeStory.title.replace(/^#+\s*/, "")}
+              </h1>
+              <span className="badge-glow text-[11px] shrink-0 hidden sm:inline-block">
+                Età {activeStory.target_age_range}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2.5 shrink-0">
+              <button
+                onClick={() => setShowAccessibilityModal(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-xs md:text-sm font-bold text-indigo-300 hover:text-indigo-200 transition-all shadow-sm"
+                title="Accessibilità e Comfort di Lettura"
+              >
+                <Eye className="w-4 h-4 text-indigo-400" />
+                <span>Aspetto</span>
+              </button>
+
               <button
                 onClick={() => handleGenerateOrDownloadPDF(activeStory)}
                 disabled={loadingPdfId === activeStory.id}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-semibold text-emerald-300 hover:text-emerald-200 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/60 text-xs font-bold text-emerald-300 hover:text-emerald-200 transition-all shadow-sm disabled:opacity-50"
                 title={activeStory.pdf_storage_path ? "Scarica PDF favola" : "Genera PDF favola"}
               >
                 {loadingPdfId === activeStory.id ? (
-                  <>
-                    <span className="w-3.5 h-3.5 border-2 border-emerald-300 border-t-transparent rounded-full animate-spin inline-block" />
-                    <span>{activeStory.pdf_storage_path ? "Apertura..." : "Generazione..."}</span>
-                  </>
-                ) : activeStory.pdf_storage_path ? (
-                  <>
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Scarica PDF</span>
-                  </>
+                  <span className="w-3.5 h-3.5 border-2 border-emerald-300 border-t-transparent rounded-full animate-spin inline-block" />
                 ) : (
-                  <>
-                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                    <span>Genera PDF</span>
-                  </>
+                  <Download className="w-4 h-4 text-emerald-400" />
                 )}
+                <span className="hidden md:inline">PDF</span>
               </button>
-              <span className="badge-glow text-xs">
-                Età {activeStory.target_age_range}
-              </span>
-              <span className="text-xs font-bold text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 px-3 py-1 rounded-full">
-                Pagina {currentPageIdx + 1} di {storyPages.length || 1}
-              </span>
             </div>
           </div>
 
-          <h1 className="text-2xl md:text-3xl font-extrabold text-center text-emerald-300">
-            {activeStory.title.replace(/^#+\s*/, "")}
-          </h1>
-
-          {/* Testo pagina corrente */}
-          <div
-            className={`min-h-[300px] p-6 md:p-10 rounded-3xl border whitespace-pre-line flex flex-col justify-center transition-all ${
-              readingNightMode
-                ? "bg-black text-amber-100 border-amber-500/30 shadow-inner"
-                : "bg-slate-900/90 text-slate-100 border-slate-800"
-            } ${
-              readingFontSize === "small"
-                ? "text-base md:text-lg leading-normal"
-                : readingFontSize === "large"
-                ? "text-xl md:text-2xl leading-relaxed"
-                : readingFontSize === "xlarge"
-                ? "text-2xl md:text-3xl font-bold leading-loose tracking-wide"
-                : "text-lg md:text-xl leading-relaxed"
-            }`}
-            style={{
-              filter: `brightness(${readingBrightness / 100}) contrast(${readingContrast / 100})`,
-            }}
-          >
-            {(() => {
-              const text =
-                storyPages.length > 0
-                  ? storyPages[currentPageIdx]
-                  : activeStory.generated_text;
-              if (currentPageIdx === 0) {
-                return text.replace(/^#\s*[^\n]+\n*/, "").trim();
-              }
-              return text;
-            })()}
+          {/* Area Centrale Storia da Leggere (100% altezza disponibile, zero scrollbar) */}
+          <div className="flex-1 flex flex-col justify-center items-center px-4 md:px-12 py-3 overflow-hidden relative">
+            <div
+              className={`w-full max-w-4xl flex-1 max-h-full rounded-3xl border flex flex-col justify-center items-center p-6 md:p-12 shadow-2xl transition-all overflow-hidden relative ${
+                readingNightMode
+                  ? "bg-black/95 text-amber-100 border-amber-500/30 shadow-inner"
+                  : "bg-slate-900/90 text-slate-100 border-slate-800"
+              }`}
+              style={{
+                filter: `brightness(${readingBrightness / 100}) contrast(${readingContrast / 100})`,
+              }}
+            >
+              <div
+                className={`w-full text-center overflow-hidden flex flex-col justify-center flex-1 transition-all ${
+                  readingFontSize === "small"
+                    ? "text-base md:text-xl leading-relaxed"
+                    : readingFontSize === "large"
+                    ? "text-xl md:text-3xl leading-relaxed font-semibold"
+                    : readingFontSize === "xlarge"
+                    ? "text-2xl sm:text-3xl md:text-4xl font-extrabold leading-normal sm:leading-relaxed tracking-wide"
+                    : "text-lg md:text-2xl leading-relaxed font-medium"
+                }`}
+              >
+                <p className="whitespace-pre-line line-clamp-[10] md:line-clamp-[12] my-auto">
+                  {(() => {
+                    const text =
+                      storyPages.length > 0
+                        ? storyPages[currentPageIdx]
+                        : activeStory.generated_text;
+                    if (currentPageIdx === 0 && text) {
+                      return text.replace(/^#\s*[^\n]+\n*/, "").trim();
+                    }
+                    return text || "";
+                  })()}
+                </p>
+              </div>
+            </div>
           </div>
 
-          {/* Barra di avanzamento e navigazione pagine */}
-          <div className="space-y-4 pt-2">
-            <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+          {/* Bottom Bar Compatta di Navigazione Pagine */}
+          <div className="shrink-0 px-4 md:px-8 py-3.5 bg-slate-900/90 border-t border-slate-800/80 backdrop-blur-md space-y-2.5">
+            <div className="w-full max-w-4xl mx-auto bg-slate-800/80 rounded-full h-1.5 overflow-hidden">
               <div
                 className="bg-gradient-to-r from-emerald-500 to-teal-400 h-full transition-all duration-300"
                 style={{
@@ -689,19 +643,23 @@ export default function ChildReaderPage() {
               />
             </div>
 
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center justify-between max-w-4xl mx-auto gap-3">
               <button
                 onClick={() => handlePageChange(currentPageIdx - 1)}
                 disabled={currentPageIdx === 0}
-                className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-bold text-sm transition-all ${
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl font-bold text-xs md:text-sm transition-all ${
                   currentPageIdx === 0
-                    ? "bg-slate-900 text-slate-600 cursor-not-allowed border border-slate-800/60"
-                    : "bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 shadow-md"
+                    ? "bg-slate-900/50 text-slate-600 cursor-not-allowed border border-slate-800/40"
+                    : "bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 shadow-md active:scale-95"
                 }`}
               >
                 <ChevronLeft className="w-5 h-5" />
                 <span>Precedente</span>
               </button>
+
+              <span className="text-xs md:text-sm font-extrabold text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 px-4 py-1.5 rounded-full shrink-0">
+                Pagina {currentPageIdx + 1} di {storyPages.length || 1}
+              </span>
 
               {currentPageIdx === storyPages.length - 1 ? (
                 <button
@@ -710,16 +668,16 @@ export default function ChildReaderPage() {
                     setActiveStory(null);
                     loadStoriesForChild(selectedChildId);
                   }}
-                  className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-extrabold text-sm shadow-lg shadow-emerald-500/30 transition-all scale-105"
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-extrabold text-xs md:text-sm shadow-lg shadow-emerald-500/30 transition-all active:scale-95"
                 >
-                  <CheckCircle2 className="w-5 h-5" />
-                  <span>Completa e Segna come Letta ✓</span>
+                  <CheckCircle2 className="w-4 h-4 md:w-5 md:h-5" />
+                  <span>Completa Favola ✓</span>
                 </button>
               ) : (
                 <button
                   onClick={() => handlePageChange(currentPageIdx + 1)}
                   disabled={currentPageIdx >= storyPages.length - 1}
-                  className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm shadow-md transition-all"
+                  className="flex items-center gap-2 px-6 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs md:text-sm shadow-md transition-all active:scale-95"
                 >
                   <span>Successiva</span>
                   <ChevronRight className="w-5 h-5" />
@@ -728,73 +686,139 @@ export default function ChildReaderPage() {
             </div>
           </div>
         </div>
-      ) : loading ? (
-        <div className="glass-card p-12 text-center text-slate-400 animate-pulse">
-          Caricamento storie magiche in corso...
-        </div>
-      ) : stories.length === 0 ? (
-        <div className="glass-card p-16 text-center space-y-4 max-w-xl mx-auto">
-          <Sparkles className="w-12 h-12 text-amber-400 mx-auto" />
-          <h2 className="text-xl font-bold text-white">
-            Nessuna Storia Ancora Generata
-          </h2>
-          <p className="text-sm text-slate-400">
-            Chiedi al genitore di creare una nuova favola magica con l&apos;AI dalla Dashboard.
-          </p>
-        </div>
       ) : (
-        <div className="space-y-12">
-          {/* Sezione 1: Continua a leggere */}
-          {stories.filter((s) => s.reading_status === "in_progress").length > 0 && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
-                <Clock className="w-5 h-5 text-amber-400" />
-                <h3 className="text-lg font-bold text-white">Continua a leggere</h3>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-semibold">
-                  {stories.filter((s) => s.reading_status === "in_progress").length}
-                </span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {stories
-                  .filter((s) => s.reading_status === "in_progress")
-                  .map((item) => renderStoryCard(item))}
-              </div>
-            </div>
-          )}
-
-          {/* Sezione 2: Novità */}
-          {stories.filter((s) => s.reading_status === "new").length > 0 && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
-                <Sparkles className="w-5 h-5 text-pink-400" />
-                <h3 className="text-lg font-bold text-white">Novità</h3>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 font-semibold">
-                  {stories.filter((s) => s.reading_status === "new").length}
-                </span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {stories
-                  .filter((s) => s.reading_status === "new")
-                  .map((item) => renderStoryCard(item))}
+        <div className="min-h-screen bg-slate-950 text-white p-4 md:p-8 space-y-8">
+          {/* Intestazione Bambino Esclusiva */}
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4 glass-card p-5 border-emerald-500/30">
+            <div className="flex items-center gap-3">
+              <ChildAvatarWithBadge
+                name={children.find((c) => c.id === selectedChildId)?.name || "Bambino"}
+                avatarPresetId={children.find((c) => c.id === selectedChildId)?.avatar_preset_id}
+                activeBadgeId={activeBadgeId}
+                activeFrameId={activeFrameId}
+                cosmeticsMap={Object.fromEntries(cosmetics.map(c => [c.id, c.icon_preset]))}
+                size="md"
+                imgClassName="border-emerald-500/40 shadow-lg"
+              />
+              <div>
+                <h1 className="text-xl font-black text-white flex items-center gap-1.5">
+                  Libreria di {children.find((c) => c.id === selectedChildId)?.name || "Favole"}
+                  {activeBadgeId && (
+                    <span className="text-base" title="Badge equipaggiato">
+                      {getCosmeticIcon(cosmetics.find(c => c.id === activeBadgeId)?.icon_preset)}
+                    </span>
+                  )}
+                </h1>
+                <p className="text-xs text-emerald-300">
+                  Esplora e leggi le storie magiche assegnate a te
+                </p>
               </div>
             </div>
-          )}
 
-          {/* Sezione 3: Già lette */}
-          {stories.filter((s) => s.reading_status === "completed").length > 0 && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
-                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                <h3 className="text-lg font-bold text-white">Già lette</h3>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-semibold">
-                  {stories.filter((s) => s.reading_status === "completed").length}
-                </span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {stories
-                  .filter((s) => s.reading_status === "completed")
-                  .map((item) => renderStoryCard(item))}
-              </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowAccessibilityModal(true)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-bold text-indigo-300 hover:text-indigo-200 transition-all shrink-0 shadow-sm"
+                title="Regola Comfort e Accessibilità di Lettura"
+              >
+                <Eye className="w-4 h-4 text-indigo-400" />
+                <span className="hidden sm:inline">Aspetto</span>
+              </button>
+
+              <button
+                onClick={() => setShowRewardsModal(true)}
+                className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-amber-500/20 to-indigo-500/20 hover:from-amber-500/30 hover:to-indigo-500/30 border border-amber-400/50 text-amber-300 transition-all font-bold text-xs md:text-sm shadow-lg hover:scale-105"
+              >
+                <Sparkles className="w-5 h-5 text-amber-400 animate-pulse" />
+                <span>★ {adventurePoints} Punti — Missioni & Premi</span>
+              </button>
+
+              <button
+                onClick={() => setShowExitModal(true)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-semibold text-slate-300 transition-colors shrink-0"
+              >
+                <Lock className="w-4 h-4 text-amber-400" />
+                <span>Esci al Genitore</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Banner di suggerimento rapido per i Punti Avventura */}
+          <div className="glass-card p-4 border-amber-500/30 bg-gradient-to-r from-amber-500/10 via-emerald-500/10 to-indigo-500/10 flex items-center justify-between text-xs text-slate-200">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>
+                <strong>Come accumulare punti:</strong> Leggi una storia fino all&apos;ultima pagina per ricevere <strong>+15 Punti Avventura</strong> e completare le missioni speciali!
+              </span>
+            </div>
+            <button
+              onClick={() => setShowRewardsModal(true)}
+              className="text-amber-300 font-bold hover:underline shrink-0 ml-3"
+            >
+              Apri Negozio & Missioni →
+            </button>
+          </div>
+
+          {loading ? (
+            <div className="glass-card p-12 text-center text-slate-400 animate-pulse">
+              Caricamento storie magiche in corso...
+            </div>
+          ) : stories.length === 0 ? (
+            <div className="glass-card p-16 text-center space-y-4 max-w-xl mx-auto">
+              <Sparkles className="w-12 h-12 text-amber-400 mx-auto" />
+              <h2 className="text-xl font-bold text-white">
+                Nessuna Storia Ancora Generata
+              </h2>
+              <p className="text-sm text-slate-400">
+                Chiedi al genitore di creare una nuova favola magica con l&apos;AI dalla Dashboard.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-12">
+              {/* Sezione 1: Continua a leggere */}
+              {stories.filter((s) => s.reading_status === "in_progress").length > 0 && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
+                    <Clock className="w-5 h-5 text-amber-400" />
+                    <h2 className="text-lg font-bold text-white">Continua a Leggere</h2>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {stories
+                      .filter((s) => s.reading_status === "in_progress")
+                      .map((item) => renderStoryCard(item))}
+                  </div>
+                </div>
+              )}
+
+              {/* Sezione 2: Nuove storie da leggere */}
+              {stories.filter((s) => s.reading_status === "new").length > 0 && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
+                    <Sparkles className="w-5 h-5 text-pink-400" />
+                    <h2 className="text-lg font-bold text-white">Nuove Favole Pronta Per Te</h2>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {stories
+                      .filter((s) => s.reading_status === "new")
+                      .map((item) => renderStoryCard(item))}
+                  </div>
+                </div>
+              )}
+
+              {/* Sezione 3: Già lette */}
+              {stories.filter((s) => s.reading_status === "completed").length > 0 && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                    <h2 className="text-lg font-bold text-white">Storie Completate</h2>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {stories
+                      .filter((s) => s.reading_status === "completed")
+                      .map((item) => renderStoryCard(item))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -830,7 +854,7 @@ export default function ChildReaderPage() {
 
       {/* Modale PIN Uscita al Genitore */}
       {showExitModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="max-w-md w-full glass-card p-6 border-amber-500/40 space-y-6">
             <div className="flex items-center gap-3 text-amber-400 font-bold text-lg">
               <Lock className="w-6 h-6" />
@@ -914,6 +938,6 @@ export default function ChildReaderPage() {
           );
         }}
       />
-    </div>
+    </>
   );
 }
