@@ -69,6 +69,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Storia specificata non trovata." }, { status: 404 });
     }
 
+    // Verifica doppia segnalazione (se ne esiste già una pending)
+    const { data: existingReport } = await supabase
+      .from("content_reports")
+      .select("id")
+      .eq("story_id", story_id)
+      .eq("reported_by_family_id", family.id)
+      .eq("status", "pending")
+      .maybeSingle();
+
+    if (existingReport) {
+      return NextResponse.json(
+        { error: "Hai già segnalato questa storia ed è in attesa di revisione." },
+        { status: 409 }
+      );
+    }
+
     // Inserimento della segnalazione in content_reports
     const { data: report, error: insertErr } = await supabase
       .from("content_reports")

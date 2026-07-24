@@ -137,7 +137,7 @@ function SettingsPageContent() {
       // Caricamento Profilo Genitore e Cosmetici/Presets per il genitore
       const [profRes, presetsRes, cosmRes] = await Promise.all([
         fetch("/api/family/profile", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
-        supabase.from("avatar_presets").select("*").in("category", ["parent", "general"]).order("name"),
+        supabase.from("avatar_presets").select("*").in("target_audience", ["parent", "both"]).order("name"),
         supabase.from("cosmetic_items").select("*").in("type", ["badge", "frame"]),
       ]);
 
@@ -376,7 +376,7 @@ function SettingsPageContent() {
       if (!familyData) {
         throw new Error("Famiglia non trovata per questo genitore.");
       }
-      const hashedPin = await hashPinAction(newPin, familyData.id);
+      const hashedPin = await hashPinAction(newPin);
       const { error: rpcError } = await supabase.rpc("set_parent_pin_hash", {
         p_family_id: familyData.id,
         p_pin_hash: hashedPin,
@@ -479,6 +479,46 @@ function SettingsPageContent() {
     } finally {
       setUpdatingAccessibility(false);
     }
+  };
+
+  const handleResetAccessibility = async () => {
+    if (!selectedChildId) return;
+    setNightMode(false);
+    setBrightness(100);
+    setContrast(100);
+    setFontSize("medium");
+    
+    setUpdatingAccessibility(true);
+    setAccessibilityStatus(null);
+    try {
+      const res = await fetch("/api/child/accessibility", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          childId: selectedChildId,
+          night_mode: false,
+          brightness: 100,
+          contrast: 100,
+          font_size: "medium",
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setAccessibilityStatus({ type: "success", msg: "Impostazioni accessibilità ripristinate." });
+        setChildrenList((prev) =>
+          prev.map((c) =>
+            c.id === selectedChildId
+              ? { ...c, night_mode: false, brightness: 100, contrast: 100, font_size: "medium" }
+              : c
+          )
+        );
+      } else {
+        setAccessibilityStatus({ type: "error", msg: data.error || "Errore durante il ripristino." });
+      }
+    } catch {
+      setAccessibilityStatus({ type: "error", msg: "Errore di rete." });
+    }
+    setUpdatingAccessibility(false);
   };
 
   const handleDeleteAccount = async () => {
@@ -617,31 +657,33 @@ function SettingsPageContent() {
             </div>
           </div>
 
+          {/* Avatar Genitore */}
           <div>
-            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
-              Scegli Avatar Genitore
+            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 mt-4">
+              Scegli il tuo Avatar
             </label>
-            {parentPresets.length === 0 ? (
-              <p className="text-xs text-slate-500">Nessun avatar preimpostato disponibile al momento.</p>
-            ) : (
-              <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 gap-3 max-h-52 overflow-y-auto p-2 bg-slate-950/60 rounded-2xl border border-slate-800">
-                {parentPresets.map((preset) => (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    onClick={() => setParentAvatarPresetId(preset.id)}
-                    className={`relative rounded-xl p-1.5 transition-all flex flex-col items-center ${
-                      parentAvatarPresetId === preset.id
-                        ? "bg-indigo-600/30 border-2 border-indigo-500 shadow-md"
-                        : "bg-slate-900/60 hover:bg-slate-800 border border-slate-800"
-                    }`}
-                  >
-                    <img src={preset.image_url} alt={preset.name} className="w-12 h-12 rounded-lg object-cover" />
-                    <span className="text-[10px] text-slate-300 mt-1 truncate w-full text-center">{preset.name}</span>
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-3 max-h-56 overflow-y-auto custom-scrollbar p-1">
+              {parentPresets.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => setParentAvatarPresetId(preset.id)}
+                  className={`p-2 rounded-xl flex items-center justify-center transition-all border ${
+                    parentAvatarPresetId === preset.id
+                      ? "border-indigo-500 bg-indigo-500/20 shadow-md ring-2 ring-indigo-500/50"
+                      : "border-slate-800 bg-slate-900/60 hover:bg-slate-800 hover:border-slate-700"
+                  }`}
+                  title={preset.name}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`/api/avatars/${preset.id}`}
+                    alt={preset.name}
+                    className="w-12 h-12 object-contain"
+                  />
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Badge & Cornici Genitore se disponibili */}
@@ -1264,6 +1306,15 @@ function SettingsPageContent() {
                       className="px-4 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs md:text-sm border border-slate-700 transition-all disabled:opacity-50"
                     >
                       Applica a Tutti i Figli
+                    </button>
+                    <button
+                      type="button"
+                      disabled={updatingAccessibility || !selectedChildId}
+                      onClick={handleResetAccessibility}
+                      className="px-4 py-3 rounded-2xl bg-slate-900/50 hover:bg-slate-800 text-slate-400 font-bold text-xs md:text-sm border border-slate-800 transition-all disabled:opacity-50"
+                      title="Ripristina impostazioni predefinite"
+                    >
+                      Ripristina
                     </button>
                   </div>
                 </div>

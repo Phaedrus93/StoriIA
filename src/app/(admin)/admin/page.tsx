@@ -17,7 +17,11 @@ import {
   Edit2,
   X,
   Sparkles,
+  Gift,
+  Book,
 } from "lucide-react";
+import ConfirmationModal from "@/components/ConfirmationModal";
+import { createClient } from "@/lib/supabase/client";
 
 const VALID_GEMINI_MODELS = [
   "gemini-2.5-flash",
@@ -31,6 +35,16 @@ const VALID_GEMINI_MODELS = [
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<string>("plans");
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+  const [confirmConfig, setConfirmConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({ isOpen: false, title: "", message: "", onConfirm: () => {} });
+
+  const confirmAction = (message: string, onConfirm: () => void) => {
+    setConfirmConfig({ isOpen: true, title: "Conferma Operazione", message, onConfirm });
+  };
 
   const showToast = (msg: string, type: "success" | "error" = "success") => {
     setToast({ msg, type });
@@ -58,10 +72,12 @@ export default function AdminPage() {
         {[
           { id: "plans", label: "Piani & Limiti", icon: CreditCard },
           { id: "avatars", label: "Preset Avatar", icon: UserCheck },
-          { id: "gamification", label: "Gamification", icon: Trophy },
+          { id: "gamification", label: "Gamification (Badge, Cornici)", icon: Trophy },
+          { id: "narrative", label: "Catalogo (Stili, Tratti, Ambienti)", icon: Book },
           { id: "morals", label: "Morali Predefinite", icon: BookOpen },
           { id: "stories", label: "Storie Preset", icon: FileText },
           { id: "texts", label: "Testi Fissi (Copy)", icon: MessageSquare },
+          { id: "giftcodes", label: "Gift Codes", icon: Gift },
           { id: "config", label: "Parametri App & AI", icon: Settings },
           { id: "reports", label: "Segnalazioni", icon: AlertTriangle },
         ].map((tab) => {
@@ -86,13 +102,28 @@ export default function AdminPage() {
 
       {/* Tab Contents */}
       {activeTab === "plans" && <SubscriptionPlansTab showToast={showToast} />}
-      {activeTab === "avatars" && <AvatarPresetsTab showToast={showToast} />}
-      {activeTab === "gamification" && <GamificationTab showToast={showToast} />}
-      {activeTab === "morals" && <MoralsTab showToast={showToast} />}
-      {activeTab === "stories" && <PresetStoriesTab showToast={showToast} />}
+      {activeTab === "avatars" && <AvatarPresetsTab showToast={showToast} confirmAction={confirmAction} />}
+      {activeTab === "gamification" && <GamificationTab showToast={showToast} confirmAction={confirmAction} />}
+      {activeTab === "narrative" && <NarrativeCatalogTab showToast={showToast} confirmAction={confirmAction} />}
+      {activeTab === "morals" && <MoralsTab showToast={showToast} confirmAction={confirmAction} />}
+      {activeTab === "stories" && <PresetStoriesTab showToast={showToast} confirmAction={confirmAction} />}
       {activeTab === "texts" && <FixedTextsTab showToast={showToast} />}
+      {activeTab === "giftcodes" && <GiftCodesTab showToast={showToast} />}
       {activeTab === "config" && <AppConfigTab showToast={showToast} />}
       {activeTab === "reports" && <ContentReportsTab showToast={showToast} />}
+
+      <ConfirmationModal
+        isOpen={confirmConfig.isOpen}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        onConfirm={() => {
+          confirmConfig.onConfirm();
+          setConfirmConfig({ ...confirmConfig, isOpen: false });
+        }}
+        onClose={() => setConfirmConfig({ ...confirmConfig, isOpen: false })}
+        variant="danger"
+        confirmLabel="Elimina"
+      />
     </div>
   );
 }
@@ -276,7 +307,7 @@ function SubscriptionPlansTab({ showToast }: { showToast: (msg: string, type?: "
 /* ==============================================================================
    TAB 2: AVATAR PRESETS
    ============================================================================== */
-function AvatarPresetsTab({ showToast }: { showToast: (msg: string, type?: "success" | "error") => void }) {
+function AvatarPresetsTab({ showToast, confirmAction }: { showToast: any; confirmAction: (msg: string, cb: () => void) => void }) {
   const [presets, setPresets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -285,7 +316,9 @@ function AvatarPresetsTab({ showToast }: { showToast: (msg: string, type?: "succ
   const [formName, setFormName] = useState("");
   const [formImg, setFormImg] = useState("");
   const [formGender, setFormGender] = useState("neutral");
+  const [formTarget, setFormTarget] = useState("child");
   const [formOrder, setFormOrder] = useState(0);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   useEffect(() => {
     loadPresets();
@@ -308,6 +341,7 @@ function AvatarPresetsTab({ showToast }: { showToast: (msg: string, type?: "succ
     setFormName("");
     setFormImg("");
     setFormGender("neutral");
+    setFormTarget("child");
     setFormOrder(presets.length);
     setShowForm(true);
   };
@@ -317,8 +351,36 @@ function AvatarPresetsTab({ showToast }: { showToast: (msg: string, type?: "succ
     setFormName(item.name || "");
     setFormImg(item.image_url || "");
     setFormGender(item.gender || "neutral");
+    setFormTarget(item.target_audience || "child");
     setFormOrder(item.display_order || 0);
     setShowForm(true);
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingImage(true);
+    try {
+      const supabase = createClient();
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random()}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from("avatars").getPublicUrl(filePath);
+      setFormImg(data.publicUrl);
+      showToast("Immagine caricata con successo!");
+    } catch (error) {
+      showToast("Errore durante l'upload dell'immagine", "error");
+    } finally {
+      setUploadingImage(false);
+    }
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -333,6 +395,7 @@ function AvatarPresetsTab({ showToast }: { showToast: (msg: string, type?: "succ
             name: formName,
             image_url: formImg,
             gender: formGender,
+            target_audience: formTarget,
             display_order: formOrder,
           }),
         });
@@ -350,6 +413,7 @@ function AvatarPresetsTab({ showToast }: { showToast: (msg: string, type?: "succ
             name: formName,
             image_url: formImg,
             gender: formGender,
+            target_audience: formTarget,
             display_order: formOrder,
           }),
         });
@@ -366,16 +430,17 @@ function AvatarPresetsTab({ showToast }: { showToast: (msg: string, type?: "succ
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Sei sicuro di voler eliminare questo preset avatar?")) return;
-    try {
-      const res = await fetch(`/api/admin/avatar-presets?id=${id}`, { method: "DELETE" });
-      if (res.ok) {
-        showToast("Preset eliminato");
-        loadPresets();
-      } else showToast("Errore durante l'eliminazione", "error");
-    } catch {
-      showToast("Errore di rete", "error");
-    }
+    confirmAction("Sei sicuro di voler eliminare questo preset avatar?", async () => {
+      try {
+        const res = await fetch(`/api/admin/avatar-presets?id=${id}`, { method: "DELETE" });
+        if (res.ok) {
+          showToast("Preset eliminato");
+          loadPresets();
+        } else showToast("Errore durante l'eliminazione", "error");
+      } catch {
+        showToast("Errore di rete", "error");
+      }
+    });
   };
 
   return (
@@ -401,8 +466,14 @@ function AvatarPresetsTab({ showToast }: { showToast: (msg: string, type?: "succ
               <input type="text" required value={formName} onChange={(e) => setFormName(e.target.value)} className="input-field w-full text-sm" placeholder="Es: Volpe Magica" />
             </div>
             <div>
-              <label className="block text-xs text-slate-400 mb-1">URL Immagine</label>
-              <input type="text" required value={formImg} onChange={(e) => setFormImg(e.target.value)} className="input-field w-full text-sm" placeholder="/avatars/fox.png o URL" />
+              <label className="block text-xs text-slate-400 mb-1">URL Immagine o Upload</label>
+              <div className="flex gap-2">
+                <input type="text" required value={formImg} onChange={(e) => setFormImg(e.target.value)} className="input-field flex-1 text-sm" placeholder="URL o Carica ->" />
+                <label className="btn-primary py-2 px-3 text-xs flex items-center justify-center cursor-pointer relative overflow-hidden" style={{ minWidth: '90px' }}>
+                  {uploadingImage ? "Caricamento..." : "Carica"}
+                  <input type="file" accept="image/*" onChange={handleFileUpload} disabled={uploadingImage} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
+                </label>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
@@ -411,6 +482,14 @@ function AvatarPresetsTab({ showToast }: { showToast: (msg: string, type?: "succ
                   <option value="neutral">Neutro</option>
                   <option value="boy">Maschio</option>
                   <option value="girl">Femmina</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Target</label>
+                <select value={formTarget} onChange={(e) => setFormTarget(e.target.value)} className="input-field w-full text-sm">
+                  <option value="child">Bambino</option>
+                  <option value="parent">Genitore</option>
+                  <option value="both">Entrambi</option>
                 </select>
               </div>
               <div>
@@ -436,7 +515,7 @@ function AvatarPresetsTab({ showToast }: { showToast: (msg: string, type?: "succ
                 <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" onError={(e) => ((e.target as HTMLImageElement).src = "/favicon.ico")} />
               </div>
               <span className="text-xs font-bold text-white truncate w-full">{item.name}</span>
-              <span className="text-[10px] text-slate-400 uppercase mt-0.5">{item.gender} • Ord: {item.display_order}</span>
+              <span className="text-[10px] text-slate-400 uppercase mt-0.5">{item.gender} • T: {item.target_audience || 'child'} • Ord: {item.display_order}</span>
               <div className="flex items-center gap-1 mt-3 w-full justify-center pt-2 border-t border-slate-800">
                 <button onClick={() => handleOpenEdit(item)} className="p-1.5 rounded hover:bg-indigo-500/20 text-indigo-400 hover:text-indigo-300 transition-colors" title="Modifica">
                   <Edit2 className="w-3.5 h-3.5" />
@@ -454,10 +533,10 @@ function AvatarPresetsTab({ showToast }: { showToast: (msg: string, type?: "succ
 }
 
 /* ==============================================================================
-   TAB 3: GAMIFICATION (READING QUESTS + COSMETIC ITEMS)
+   TAB 3: GAMIFICATION (BADGES & CORNICI) + MISSIONI
    ============================================================================== */
-function GamificationTab({ showToast }: { showToast: (msg: string, type?: "success" | "error") => void }) {
-  const [quests, setQuests] = useState<any[]>([]);
+function GamificationTab({ showToast, confirmAction }: { showToast: any; confirmAction: (msg: string, cb: () => void) => void }) {
+  const [missions, setMissions] = useState<any[]>([]);
   const [cosmetics, setCosmetics] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -475,17 +554,21 @@ function GamificationTab({ showToast }: { showToast: (msg: string, type?: "succe
   const [cType, setCType] = useState("badge");
   const [cCost, setCCost] = useState(50);
   const [cIcon, setCIcon] = useState("🏆");
+  const [cUnlockReq, setCUnlockReq] = useState("");
+  const [cFrameColor, setCFrameColor] = useState("#ffffff");
+  const [cFrameEffect, setCFrameEffect] = useState("solid");
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   useEffect(() => {
-    loadAll();
+    loadGamification();
   }, []);
 
-  async function loadAll() {
+  async function loadGamification() {
     setLoading(true);
     try {
       const res = await fetch("/api/admin/gamification");
       const data = await res.json();
-      if (data.reading_quests) setQuests(data.reading_quests);
+      if (data.reading_quests) setMissions(data.reading_quests);
       if (data.cosmetic_items) setCosmetics(data.cosmetic_items);
     } catch {
       showToast("Errore caricamento gamification", "error");
@@ -504,55 +587,95 @@ function GamificationTab({ showToast }: { showToast: (msg: string, type?: "succe
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ table: "reading_quests", id: editingQuest.id, ...payload }),
         });
-        if (res.ok) { showToast("Missione aggiornata"); setShowQuestForm(false); loadAll(); }
+        if (res.ok) { showToast("Missione aggiornata"); setShowQuestForm(false); loadGamification(); }
       } else {
         const res = await fetch("/api/admin/gamification", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ table: "reading_quests", ...payload }),
         });
-        if (res.ok) { showToast("Missione creata"); setShowQuestForm(false); loadAll(); }
+        if (res.ok) { showToast("Missione creata"); setShowQuestForm(false); loadGamification(); }
       }
     } catch { showToast("Errore di rete", "error"); }
   };
 
-  const handleDeleteQuest = async (id: string) => {
-    if (!confirm("Eliminare questa missione di lettura?")) return;
-    try {
-      const res = await fetch(`/api/admin/gamification?table=reading_quests&id=${id}`, { method: "DELETE" });
-      if (res.ok) { showToast("Missione eliminata"); loadAll(); }
-    } catch { showToast("Errore di rete", "error"); }
+  const handleDeleteMission = async (id: string) => {
+    confirmAction("Eliminare questa missione di lettura?", async () => {
+      try {
+        const res = await fetch(`/api/admin/gamification?id=${id}&collection=missions`, { method: "DELETE" });
+        if (res.ok) {
+          showToast("Missione eliminata");
+          loadGamification();
+        } else showToast("Errore", "error");
+      } catch {
+        showToast("Errore rete", "error");
+      }
+    });
   };
 
   // Cosmetics handlers
+  const handleUploadBadgeIcon = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImage(true);
+    try {
+      const { createClient } = await import("@/lib/supabase/client");
+      const supabaseClient = createClient();
+      const ext = file.name.split('.').pop();
+      const fileName = `badge_${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabaseClient.storage.from("gamification").upload(fileName, file);
+      if (uploadError) throw uploadError;
+      const { data: { publicUrl } } = supabaseClient.storage.from("gamification").getPublicUrl(fileName);
+      setCIcon(publicUrl);
+      showToast("Immagine caricata con successo", "success");
+    } catch {
+      showToast("Errore caricamento immagine", "error");
+    }
+    setUploadingImage(false);
+  };
+
   const handleSaveCosmetic = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const payload = { name: cName, type: cType, cost_points: cCost, icon_value: cIcon };
+      const payload: any = { name: cName, type: cType, cost_points: cCost };
+      if (cType === "badge") {
+        payload.icon_value = cIcon;
+        payload.unlock_requirement = cUnlockReq;
+      } else {
+        payload.frame_color = cFrameColor;
+        payload.frame_effect = cFrameEffect;
+      }
+
       if (editingCosmetic) {
         const res = await fetch("/api/admin/gamification", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ table: "cosmetic_items", id: editingCosmetic.id, ...payload }),
         });
-        if (res.ok) { showToast("Cosmetico aggiornato"); setShowCosmeticForm(false); loadAll(); }
+        if (res.ok) { showToast("Cosmetico aggiornato"); setShowCosmeticForm(false); loadGamification(); }
       } else {
         const res = await fetch("/api/admin/gamification", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ table: "cosmetic_items", ...payload }),
         });
-        if (res.ok) { showToast("Cosmetico creato"); setShowCosmeticForm(false); loadAll(); }
+        if (res.ok) { showToast("Cosmetico creato"); setShowCosmeticForm(false); loadGamification(); }
       }
     } catch { showToast("Errore di rete", "error"); }
   };
 
   const handleDeleteCosmetic = async (id: string) => {
-    if (!confirm("Eliminare questo elemento cosmetico?")) return;
-    try {
-      const res = await fetch(`/api/admin/gamification?table=cosmetic_items&id=${id}`, { method: "DELETE" });
-      if (res.ok) { showToast("Cosmetico eliminato"); loadAll(); }
-    } catch { showToast("Errore di rete", "error"); }
+    confirmAction("Eliminare questo elemento cosmetico?", async () => {
+      try {
+        const res = await fetch(`/api/admin/gamification?id=${id}&collection=cosmetics`, { method: "DELETE" });
+        if (res.ok) {
+          showToast("Elemento eliminato");
+          loadGamification();
+        } else showToast("Errore", "error");
+      } catch {
+        showToast("Errore rete", "error");
+      }
+    });
   };
 
   return (
@@ -603,11 +726,11 @@ function GamificationTab({ showToast }: { showToast: (msg: string, type?: "succe
 
         {loading ? (
           <div className="text-center py-6 text-slate-500 text-xs">Caricamento...</div>
-        ) : quests.length === 0 ? (
+        ) : missions.length === 0 ? (
           <div className="glass-card p-6 text-center text-slate-500 text-xs">Nessuna missione presente.</div>
         ) : (
           <div className="space-y-2">
-            {quests.map((q) => (
+            {missions.map((q) => (
               <div key={q.id} className="glass-card p-3 flex items-center justify-between gap-3">
                 <div>
                   <h4 className="text-xs font-bold text-white">{q.title}</h4>
@@ -617,7 +740,7 @@ function GamificationTab({ showToast }: { showToast: (msg: string, type?: "succe
                   <button onClick={() => { setEditingQuest(q); setQTitle(q.title); setQCount(q.required_count); setQReward(q.reward_points); setQDesc(q.description || ""); setShowQuestForm(true); }} className="p-1.5 rounded hover:bg-slate-800 text-indigo-400">
                     <Edit2 className="w-3.5 h-3.5" />
                   </button>
-                  <button onClick={() => handleDeleteQuest(q.id)} className="p-1.5 rounded hover:bg-slate-800 text-rose-400">
+                  <button onClick={() => handleDeleteMission(q.id)} className="p-1.5 rounded hover:bg-slate-800 text-rose-400">
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -634,7 +757,17 @@ function GamificationTab({ showToast }: { showToast: (msg: string, type?: "succe
             <Sparkles className="w-4 h-4 text-indigo-400" /> Badge & Cornici
           </h3>
           <button
-            onClick={() => { setEditingCosmetic(null); setCName(""); setCType("badge"); setCCost(50); setCIcon("🏆"); setShowCosmeticForm(true); }}
+            onClick={() => { 
+              setEditingCosmetic(null); 
+              setCName(""); 
+              setCType("badge"); 
+              setCCost(50); 
+              setCIcon("🏆"); 
+              setCUnlockReq("");
+              setCFrameColor("#ffffff");
+              setCFrameEffect("solid");
+              setShowCosmeticForm(true); 
+            }}
             className="btn-primary py-1.5 px-3 text-xs flex items-center gap-1"
           >
             <Plus className="w-3.5 h-3.5" /> Nuovo Cosmetico
@@ -642,34 +775,76 @@ function GamificationTab({ showToast }: { showToast: (msg: string, type?: "succe
         </div>
 
         {showCosmeticForm && (
-          <form onSubmit={handleSaveCosmetic} className="glass-card p-4 space-y-3 border-indigo-500/40">
-            <h4 className="text-xs font-bold text-indigo-300">{editingCosmetic ? "Modifica Cosmetico" : "Nuovo Cosmetico"}</h4>
-            <div className="grid grid-cols-2 gap-2">
+          <form onSubmit={handleSaveCosmetic} className={`glass-card p-4 space-y-4 border-${cType === 'badge' ? 'indigo' : 'amber'}-500/40`}>
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold text-white">{editingCosmetic ? "Modifica Cosmetico" : "Nuovo Cosmetico"}</h4>
+            </div>
+            
+            <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 space-y-2">
+              <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider">Seleziona Tipo</label>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setCType("badge")} className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${cType === "badge" ? "bg-indigo-600 text-white" : "bg-slate-800 text-slate-400"}`}>Badge</button>
+                <button type="button" onClick={() => setCType("frame")} className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${cType === "frame" ? "bg-amber-600 text-white" : "bg-slate-800 text-slate-400"}`}>Cornice</button>
+              </div>
+              <p className="text-[10px] text-slate-500 leading-tight mt-2">
+                <strong className="text-slate-300">Differenza:</strong> I Badge sono icone (o immagini) guadagnate che si affiancano al nome. Le Cornici sono anelli colorati/con effetti applicati attorno all'Avatar.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-[10px] text-slate-400">Nome</label>
+                <label className="block text-[10px] text-slate-400 mb-1">Nome</label>
                 <input type="text" required value={cName} onChange={(e) => setCName(e.target.value)} className="input-field w-full text-xs" />
               </div>
               <div>
-                <label className="block text-[10px] text-slate-400">Tipo</label>
-                <select value={cType} onChange={(e) => setCType(e.target.value)} className="input-field w-full text-xs">
-                  <option value="badge">Badge</option>
-                  <option value="frame">Cornice (Frame)</option>
-                </select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-[10px] text-slate-400">Costo Punti</label>
+                <label className="block text-[10px] text-slate-400 mb-1">Costo Punti</label>
                 <input type="number" required min="0" value={cCost} onChange={(e) => setCCost(parseInt(e.target.value, 10) || 0)} className="input-field w-full text-xs" />
               </div>
-              <div>
-                <label className="block text-[10px] text-slate-400">Icona / Class CSS</label>
-                <input type="text" required value={cIcon} onChange={(e) => setCIcon(e.target.value)} className="input-field w-full text-xs" placeholder="🏆 o border-amber-400" />
-              </div>
             </div>
-            <div className="flex justify-end gap-2 pt-1">
-              <button type="button" onClick={() => setShowCosmeticForm(false)} className="btn-secondary py-1 px-3 text-xs">Annulla</button>
-              <button type="submit" className="btn-primary py-1 px-3 text-xs">Salva</button>
+
+            {cType === "badge" ? (
+              <div className="space-y-3 bg-indigo-500/5 p-3 rounded-xl border border-indigo-500/10">
+                <div>
+                  <label className="block text-[10px] text-indigo-300/70 mb-1">Requisito Missione (Opzionale)</label>
+                  <input type="text" value={cUnlockReq} onChange={(e) => setCUnlockReq(e.target.value)} className="input-field w-full text-xs" placeholder="es. Completa 5 letture" />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-indigo-300/70 mb-1">Icona (Emoji o URL)</label>
+                  <div className="flex gap-2">
+                    <input type="text" required value={cIcon} onChange={(e) => setCIcon(e.target.value)} className="input-field w-full text-xs" placeholder="🏆 o https://..." />
+                    <label className="btn-secondary py-1.5 px-3 text-xs cursor-pointer flex items-center justify-center min-w-max">
+                      {uploadingImage ? "..." : "Upload"}
+                      <input type="file" accept="image/png, image/jpeg, image/webp" className="hidden" onChange={handleUploadBadgeIcon} disabled={uploadingImage} />
+                    </label>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3 bg-amber-500/5 p-3 rounded-xl border border-amber-500/10">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] text-amber-300/70 mb-1">Colore Cornice (HEX)</label>
+                    <div className="flex items-center gap-2">
+                      <input type="color" value={cFrameColor} onChange={(e) => setCFrameColor(e.target.value)} className="w-8 h-8 rounded cursor-pointer bg-slate-900 border-0 p-0" />
+                      <input type="text" value={cFrameColor} onChange={(e) => setCFrameColor(e.target.value)} className="input-field flex-1 text-xs font-mono" placeholder="#ffffff" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-amber-300/70 mb-1">Effetto Speciale</label>
+                    <select value={cFrameEffect} onChange={(e) => setCFrameEffect(e.target.value)} className="input-field w-full text-xs">
+                      <option value="solid">Tinta Unita (Solid)</option>
+                      <option value="glow">Bagliore (Glow)</option>
+                      <option value="sparkling">Brillantini (Sparkling)</option>
+                      <option value="flame">Fiamma (Flame)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+              <button type="button" onClick={() => setShowCosmeticForm(false)} className="btn-secondary py-1.5 px-4 text-xs">Annulla</button>
+              <button type="submit" disabled={uploadingImage} className="btn-primary py-1.5 px-4 text-xs">{editingCosmetic ? "Salva Modifiche" : "Crea Cosmetico"}</button>
             </div>
           </form>
         )}
@@ -690,7 +865,17 @@ function GamificationTab({ showToast }: { showToast: (msg: string, type?: "succe
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button onClick={() => { setEditingCosmetic(c); setCName(c.name); setCType(c.type); setCCost(c.cost_points); setCIcon(c.icon_value); setShowCosmeticForm(true); }} className="p-1.5 rounded hover:bg-slate-800 text-indigo-400">
+                  <button onClick={() => { 
+                    setEditingCosmetic(c); 
+                    setCName(c.name); 
+                    setCType(c.type); 
+                    setCCost(c.cost_points); 
+                    setCIcon(c.icon_value); 
+                    setCUnlockReq(c.unlock_requirement || "");
+                    setCFrameColor(c.frame_color || "#ffffff");
+                    setCFrameEffect(c.frame_effect || "solid");
+                    setShowCosmeticForm(true); 
+                  }} className="p-1.5 rounded hover:bg-slate-800 text-indigo-400">
                     <Edit2 className="w-3.5 h-3.5" />
                   </button>
                   <button onClick={() => handleDeleteCosmetic(c.id)} className="p-1.5 rounded hover:bg-slate-800 text-rose-400">
@@ -707,9 +892,9 @@ function GamificationTab({ showToast }: { showToast: (msg: string, type?: "succe
 }
 
 /* ==============================================================================
-   TAB 4: MORALS PREDEFINITE
+   TAB 4: MORALI PREDEFINITE
    ============================================================================== */
-function MoralsTab({ showToast }: { showToast: (msg: string, type?: "success" | "error") => void }) {
+function MoralsTab({ showToast, confirmAction }: { showToast: any; confirmAction: (msg: string, cb: () => void) => void }) {
   const [morals, setMorals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -759,11 +944,17 @@ function MoralsTab({ showToast }: { showToast: (msg: string, type?: "success" | 
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Eliminare questa morale predefinita?")) return;
-    try {
-      const res = await fetch(`/api/admin/morals?id=${id}`, { method: "DELETE" });
-      if (res.ok) { showToast("Morale eliminata"); loadMorals(); }
-    } catch { showToast("Errore di rete", "error"); }
+    confirmAction("Eliminare questa morale predefinita?", async () => {
+      try {
+        const res = await fetch(`/api/admin/morals?id=${id}`, { method: "DELETE" });
+        if (res.ok) {
+          showToast("Morale eliminata");
+          loadMorals();
+        } else showToast("Errore", "error");
+      } catch {
+        showToast("Errore rete", "error");
+      }
+    });
   };
 
   return (
@@ -857,9 +1048,9 @@ function MoralsTab({ showToast }: { showToast: (msg: string, type?: "success" | 
 }
 
 /* ==============================================================================
-   TAB 5: PRESET STORIES
+   TAB 5: STORIE PRESET
    ============================================================================== */
-function PresetStoriesTab({ showToast }: { showToast: (msg: string, type?: "success" | "error") => void }) {
+function PresetStoriesTab({ showToast, confirmAction }: { showToast: any; confirmAction: (msg: string, cb: () => void) => void }) {
   const [stories, setStories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -907,11 +1098,17 @@ function PresetStoriesTab({ showToast }: { showToast: (msg: string, type?: "succ
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Eliminare questa storia preset?")) return;
-    try {
-      const res = await fetch(`/api/admin/preset-stories?id=${id}`, { method: "DELETE" });
-      if (res.ok) { showToast("Storia eliminata"); loadStories(); }
-    } catch { showToast("Errore di rete", "error"); }
+    confirmAction("Eliminare questa storia preset?", async () => {
+      try {
+        const res = await fetch(`/api/admin/preset-stories?id=${id}`, { method: "DELETE" });
+        if (res.ok) {
+          showToast("Storia eliminata");
+          loadStories();
+        } else showToast("Errore eliminazione", "error");
+      } catch {
+        showToast("Errore rete", "error");
+      }
+    });
   };
 
   return (
@@ -1179,6 +1376,16 @@ function AppConfigTab({ showToast }: { showToast: (msg: string, type?: "success"
 /* ==============================================================================
    TAB 8: CONTENT REPORTS (SEGNALAZIONI CONTENUTO)
    ============================================================================== */
+function getStatusBadge(status: string) {
+  if (status === "resolved" || status === "reviewed") {
+    return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Esaminata</span>;
+  }
+  if (status === "dismissed" || status === "archived") {
+    return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-800 text-slate-400 border border-slate-700">Archiviata</span>;
+  }
+  return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-500/20 text-rose-400 border border-rose-500/30">In Attesa</span>;
+}
+
 function ContentReportsTab({ showToast }: { showToast: (msg: string, type?: "success" | "error") => void }) {
   const [reports, setReports] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1190,7 +1397,9 @@ function ContentReportsTab({ showToast }: { showToast: (msg: string, type?: "suc
   async function loadReports() {
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/content-reports");
+      const res = await fetch("/api/admin/content-reports", {
+        cache: "no-store",
+      });
       const data = await res.json();
       if (data.reports) setReports(data.reports);
     } catch {
@@ -1257,15 +1466,7 @@ function ContentReportsTab({ showToast }: { showToast: (msg: string, type?: "suc
               <div key={r.id} className="glass-card p-5 space-y-4 border-slate-800">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800">
                   <div>
-                    <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                      r.status === "pending"
-                        ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
-                        : r.status === "reviewed"
-                        ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                        : "bg-slate-800 text-slate-400 border border-slate-700"
-                    }`}>
-                      {r.status === "pending" ? "In Attesa" : r.status === "reviewed" ? "Esaminata" : "Archiviata"}
-                    </span>
+                    {getStatusBadge(r.status)}
                     <span className="ml-3 text-xs font-bold text-amber-400">{getCategoryLabel(r.reason_category)}</span>
                   </div>
                   <span className="text-[11px] text-slate-400 font-mono">
@@ -1285,8 +1486,15 @@ function ContentReportsTab({ showToast }: { showToast: (msg: string, type?: "suc
 
                   <div className="space-y-1 bg-slate-900/60 p-3 rounded-xl border border-slate-800">
                     <div className="font-bold text-slate-300 text-[11px] uppercase tracking-wider">Estratto Storia (Età: {r.stories?.target_age_range || "N/A"})</div>
-                    <div className="font-bold text-indigo-300">{storyTitle}</div>
-                    <div className="text-slate-400 text-[11px] line-clamp-3 mt-1 leading-relaxed">{excerpt}</div>
+                    <div className="font-bold text-indigo-300 mb-2">{storyTitle}</div>
+                    <details className="text-slate-400 text-[11px] leading-relaxed group">
+                      <summary className="cursor-pointer font-semibold text-indigo-400 hover:text-indigo-300 transition-colors mb-1">
+                        Leggi testo completo
+                      </summary>
+                      <div className="mt-2 p-3 bg-slate-950 rounded-lg border border-slate-800 whitespace-pre-wrap max-h-60 overflow-y-auto custom-scrollbar">
+                        {storyText}
+                      </div>
+                    </details>
                   </div>
                 </div>
 
@@ -1326,3 +1534,394 @@ function ContentReportsTab({ showToast }: { showToast: (msg: string, type?: "suc
   );
 }
 
+/* ==============================================================================
+   TAB 9: NARRATIVE CATALOG (Temi & Luoghi)
+   ============================================================================== */
+function NarrativeCatalogTab({ showToast, confirmAction }: { showToast: any; confirmAction: (msg: string, cb: () => void) => void }) {
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filterType, setFilterType] = useState<"all" | "CHARACTER_TRAIT" | "SETTING_THEME" | "STORY_STYLE">("all");
+  const [showForm, setShowForm] = useState(false);
+  const [editingItem, setEditingItem] = useState<any | null>(null);
+
+  const [cName, setCName] = useState("");
+  const [cType, setCType] = useState("CHARACTER_TRAIT");
+  const [cDesc, setCDesc] = useState("");
+  const [cCost, setCCost] = useState(40);
+  const [cIcon, setCIcon] = useState("star");
+  const [cRequiresPlan, setCRequiresPlan] = useState("free");
+
+  useEffect(() => {
+    loadContent();
+  }, []);
+
+  async function loadContent() {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/narrative-content");
+      const data = await res.json();
+      if (data.narrative_content) setItems(data.narrative_content);
+    } catch { showToast("Errore caricamento contenuti narrativi", "error"); }
+    setLoading(false);
+  }
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const payload = {
+        name: cName,
+        content_type: cType,
+        description: cDesc,
+        cost_points: cCost,
+        icon_preset: cIcon,
+        requires_plan: cRequiresPlan,
+        is_active: true
+      };
+      if (editingItem) {
+        const res = await fetch("/api/admin/narrative-content", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: editingItem.id, ...payload }),
+        });
+        if (res.ok) { showToast("Contenuto aggiornato"); setShowForm(false); loadContent(); }
+      } else {
+        const res = await fetch("/api/admin/narrative-content", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) { showToast("Contenuto creato"); setShowForm(false); loadContent(); }
+      }
+    } catch { showToast("Errore di rete", "error"); }
+  };
+
+  const handleDelete = async (id: string) => {
+    confirmAction("Eliminare questo contenuto narrativo?", async () => {
+      try {
+        const res = await fetch(`/api/admin/narrative-content?id=${id}`, { method: "DELETE" });
+        if (res.ok) {
+          showToast("Contenuto eliminato");
+          loadContent();
+        } else showToast("Errore eliminazione", "error");
+      } catch {
+        showToast("Errore di rete", "error");
+      }
+    });
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-base font-bold text-white flex items-center gap-2">
+          <Book className="w-5 h-5 text-indigo-400" /> Contenuti Narrativi
+        </h2>
+        <button
+          onClick={() => {
+            setEditingItem(null); setCName(""); setCType("CHARACTER_TRAIT"); setCDesc(""); setCCost(40); setCIcon("star"); setCRequiresPlan("free"); setShowForm(true);
+          }}
+          className="btn-primary py-2 px-4 text-xs flex items-center gap-2"
+        >
+          <Plus className="w-4 h-4" /> Nuovo Contenuto
+        </button>
+      </div>
+
+      {showForm && (
+        <form onSubmit={handleSave} className="glass-card p-6 space-y-4">
+          <h3 className="text-sm font-bold text-white">{editingItem ? "Modifica Contenuto" : "Nuovo Contenuto"}</h3>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Nome / Titolo</label>
+              <input type="text" required value={cName} onChange={(e) => setCName(e.target.value)} className="input-field w-full text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Tipo di Contenuto</label>
+              <select value={cType} onChange={(e) => setCType(e.target.value)} className="input-field w-full text-sm">
+                <option value="CHARACTER_TRAIT">Tratto Personaggio</option>
+                <option value="SETTING_THEME">Tema Ambientazione</option>
+                <option value="STORY_STYLE">Stile Storia</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs text-slate-400 mb-1">Descrizione Lunga (Wizard)</label>
+            <textarea required value={cDesc} onChange={(e) => setCDesc(e.target.value)} rows={3} className="input-field w-full text-sm" placeholder="Spiega al bambino cosa fa questo contenuto..." />
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Costo in Punti</label>
+              <input type="number" required min="0" value={cCost} onChange={(e) => setCCost(parseInt(e.target.value, 10) || 0)} className="input-field w-full text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Icona (lucide-react / preset)</label>
+              <input type="text" required value={cIcon} onChange={(e) => setCIcon(e.target.value)} className="input-field w-full text-sm" placeholder="star" />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Piano Richiesto</label>
+              <select value={cRequiresPlan} onChange={(e) => setCRequiresPlan(e.target.value)} className="input-field w-full text-sm">
+                <option value="free">Gratuito</option>
+                <option value="premium">Premium</option>
+                <option value="family">Family</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={() => setShowForm(false)} className="btn-secondary py-2 px-4 text-xs">Annulla</button>
+            <button type="submit" className="btn-primary py-2 px-4 text-xs">Salva Contenuto</button>
+          </div>
+        </form>
+      )}
+
+      {loading ? (
+        <div className="text-center py-12 text-slate-400 text-sm">Caricamento contenuti...</div>
+      ) : items.length === 0 ? (
+        <div className="glass-card p-8 text-center text-slate-500 text-sm">Nessun contenuto narrativo presente.</div>
+      ) : (
+        <>
+          <div className="flex gap-2 p-1 bg-slate-900 rounded-xl border border-slate-800 overflow-x-auto custom-scrollbar">
+            {(["all", "STORY_STYLE", "CHARACTER_TRAIT", "SETTING_THEME"] as const).map((filterVal) => {
+              const labels: Record<string, string> = {
+                all: "Tutti",
+                STORY_STYLE: "Stili",
+                CHARACTER_TRAIT: "Tratti",
+                SETTING_THEME: "Ambientazioni",
+              };
+              return (
+                <button
+                  key={filterVal}
+                  onClick={() => setFilterType(filterVal)}
+                  className={`flex-1 min-w-max px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    filterType === filterVal
+                      ? "bg-indigo-600 text-white shadow-md"
+                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                  }`}
+                >
+                  {labels[filterVal]}
+                </button>
+              );
+            })}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {items.filter(item => filterType === "all" || item.content_type === filterType).map((item) => (
+            <div key={item.id} className="glass-card p-4 flex items-start justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <h4 className="text-sm font-bold text-white">{item.name}</h4>
+                  <span className="text-[10px] uppercase font-bold text-indigo-400 bg-indigo-500/10 px-1.5 py-0.5 rounded">{item.content_type}</span>
+                </div>
+                <p className="text-xs text-slate-400 line-clamp-2 mb-2">{item.description}</p>
+                <div className="flex items-center gap-3 text-[11px] font-bold text-slate-500">
+                  <span className="text-amber-300">{item.cost_points} Punti</span>
+                  <span className="capitalize">{item.requires_plan}</span>
+                  <span className="font-mono text-slate-400">icon: {item.icon_preset}</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <button onClick={() => { setEditingItem(item); setCName(item.name); setCType(item.content_type); setCDesc(item.description); setCCost(item.cost_points || 40); setCIcon(item.icon_preset); setCRequiresPlan(item.requires_plan || "free"); setShowForm(true); }} className="p-2 rounded hover:bg-slate-800 text-indigo-400">
+                  <Edit2 className="w-4 h-4" />
+                </button>
+                <button onClick={() => handleDelete(item.id)} className="p-2 rounded hover:bg-slate-800 text-rose-400">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ==============================================================================
+   TAB 10: GIFT CODES
+   ============================================================================== */
+function GiftCodesTab({ showToast }: { showToast: (msg: string, type?: "success" | "error") => void }) {
+  const [codes, setCodes] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  
+  const [newType, setNewType] = useState("credits");
+  const [newAmountOrTier, setNewAmountOrTier] = useState("10");
+  const [newDurationMonths, setNewDurationMonths] = useState("12");
+  const [newNotes, setNewNotes] = useState("");
+
+  useEffect(() => {
+    loadCodes();
+  }, []);
+
+  async function loadCodes() {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/gift-codes");
+      const data = await res.json();
+      if (data.codes) setCodes(data.codes);
+    } catch {
+      showToast("Errore durante il caricamento dei gift code", "error");
+    }
+    setLoading(false);
+  }
+
+  const handleGenerate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/gift-codes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          type: newType, 
+          amount_or_tier: newAmountOrTier, 
+          duration_months: newType === "subscription" ? parseInt(newDurationMonths, 10) : undefined,
+          notes: newNotes 
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.giftCode) {
+        showToast("Gift Code generato con successo!");
+        setNewNotes("");
+        loadCodes();
+      } else {
+        showToast(data.error || "Errore durante la generazione", "error");
+      }
+    } catch {
+      showToast("Errore di rete durante la generazione", "error");
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="p-6 md:p-8 rounded-2xl bg-slate-900/80 border border-slate-800 backdrop-blur-xl shadow-xl">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 rounded-xl bg-indigo-500/20 flex items-center justify-center border border-indigo-500/30">
+            <Gift className="w-5 h-5 text-indigo-400" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold">Genera Nuovo Gift Code</h2>
+            <p className="text-sm text-slate-400">Crea un codice regalo manuale attivo da inviare agli utenti.</p>
+          </div>
+        </div>
+
+        <form onSubmit={handleGenerate} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-400 uppercase">Tipo</label>
+            <select
+              value={newType}
+              onChange={(e) => setNewType(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-sm text-slate-200"
+            >
+              <option value="credits">Crediti AI</option>
+              <option value="subscription">Abbonamento</option>
+            </select>
+          </div>
+          
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-400 uppercase">
+              {newType === "credits" ? "Quantità" : "Piano (es. premium)"}
+            </label>
+            <input
+              type="text"
+              value={newAmountOrTier}
+              onChange={(e) => setNewAmountOrTier(e.target.value)}
+              placeholder={newType === "credits" ? "es. 10" : "es. premium"}
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-sm text-slate-200"
+              required
+            />
+          </div>
+
+          {newType === "subscription" && (
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-400 uppercase">Durata (Mesi)</label>
+              <input
+                type="number"
+                min="1"
+                value={newDurationMonths}
+                onChange={(e) => setNewDurationMonths(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-sm text-slate-200"
+                required
+              />
+            </div>
+          )}
+
+          <div className={`space-y-1 ${newType === "credits" ? "md:col-span-2" : "md:col-span-1"}`}>
+            <label className="text-xs font-semibold text-slate-400 uppercase">Note (opzionale)</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newNotes}
+                onChange={(e) => setNewNotes(e.target.value)}
+                placeholder="es. Regalo per contest di Natale"
+                className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-sm text-slate-200"
+              />
+              <button
+                type="submit"
+                disabled={saving}
+                className="btn-primary shrink-0 py-2 px-6 flex items-center gap-2"
+              >
+                {saving ? "Generazione..." : <><Plus className="w-4 h-4" /> Genera</>}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <div className="p-6 md:p-8 rounded-2xl bg-slate-900/80 border border-slate-800 backdrop-blur-xl shadow-xl">
+        <h2 className="text-xl font-bold mb-4">Storico Gift Codes</h2>
+        {loading ? (
+          <p className="text-slate-400 text-sm">Caricamento...</p>
+        ) : codes.length === 0 ? (
+          <p className="text-slate-400 text-sm">Nessun gift code generato finora.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-slate-800 text-xs uppercase tracking-wider text-slate-400">
+                  <th className="py-3 px-4">Codice</th>
+                  <th className="py-3 px-4">Tipo / Entità</th>
+                  <th className="py-3 px-4">Stato</th>
+                  <th className="py-3 px-4">Note / Creazione</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60 text-sm">
+                {codes.map((c) => (
+                  <tr key={c.id} className="hover:bg-slate-800/30 transition-colors">
+                    <td className="py-3 px-4 font-mono font-bold text-indigo-300">
+                      {c.code}
+                    </td>
+                    <td className="py-3 px-4">
+                      {c.type === "credits" ? `${c.amount_or_tier} Crediti` : `Piano ${c.amount_or_tier.toUpperCase()}`}
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className={`px-2 py-0.5 rounded text-xs border ${
+                        c.status === "active" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" :
+                        c.status === "redeemed" ? "bg-slate-800 text-slate-400 border-slate-700" :
+                        "bg-amber-500/20 text-amber-400 border-amber-500/30"
+                      }`}>
+                        {c.status.toUpperCase()}
+                      </span>
+                      {c.status === "redeemed" && c.redeemed_at && (
+                        <div className="text-[10px] text-slate-500 mt-1">
+                          il {new Date(c.redeemed_at).toLocaleDateString("it-IT")}
+                        </div>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-slate-400 max-w-[200px] truncate">
+                      {c.notes || "Nessuna nota"}
+                      <div className="text-[10px] text-slate-500 mt-1">
+                        Creato: {new Date(c.created_at).toLocaleDateString("it-IT")}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

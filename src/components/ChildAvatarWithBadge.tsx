@@ -29,7 +29,7 @@ interface ChildAvatarWithBadgeProps {
   avatarPresetId?: string | null;
   activeBadgeId?: string | null;
   activeFrameId?: string | null;
-  cosmeticsMap?: Record<string, string>; // id -> icon_preset
+  cosmeticsMap?: Record<string, any>; // id -> cosmetic object
   size?: "sm" | "md" | "lg" | "xl";
   className?: string;
   imgClassName?: string;
@@ -54,22 +54,46 @@ export function ChildAvatarWithBadge({
 
   const currentSize = sizeClasses[size] || sizeClasses.md;
   const hasFrame = Boolean(activeFrameId);
+  const frameData = hasFrame && cosmeticsMap && activeFrameId ? cosmeticsMap[activeFrameId] : null;
+  let frameEffect = frameData?.frame_effect || "solid";
+  if (frameEffect === "sparkle") frameEffect = "sparkling";
+  const frameColor = frameData?.frame_color || "#f59e0b";
+  const roundingClass = size === "xl" ? "rounded-3xl" : "rounded-2xl";
   const hasBadge = Boolean(activeBadgeId);
 
   const badgeIcon = hasBadge
-    ? getCosmeticIcon(cosmeticsMap && activeBadgeId ? cosmeticsMap[activeBadgeId] : null)
+    ? getCosmeticIcon(cosmeticsMap && activeBadgeId ? (cosmeticsMap[activeBadgeId]?.icon_preset || cosmeticsMap[activeBadgeId]) : null)
     : null;
 
   return (
-    <div
-      className={`relative shrink-0 inline-flex ${
-        hasFrame ? "ring-2 ring-amber-400 ring-offset-2 ring-offset-slate-950 rounded-2xl" : ""
-      } ${className}`}
-    >
+    <div className={`relative shrink-0 inline-flex ${roundingClass} ${className}`}>
+      {hasFrame && (
+        <div 
+          className={`absolute inset-0 pointer-events-none z-0 ${roundingClass} frame-effect-${frameEffect}`}
+          style={{ "--frame-color": frameColor } as React.CSSProperties}
+        >
+          {frameEffect === "sparkling" && (
+            <svg className="absolute inset-0 w-full h-full overflow-visible">
+               <rect 
+                 x="-2" y="-2" 
+                 style={{ width: "calc(100% + 4px)", height: "calc(100% + 4px)" }}
+                 rx={size === "xl" ? "26" : "18"} 
+                 fill="none" 
+                 stroke="var(--frame-color)" 
+                 strokeWidth="3" 
+                 strokeDasharray="4 8"
+                 strokeLinecap="round"
+                 className="animate-sparkling-ants"
+               />
+            </svg>
+          )}
+        </div>
+      )}
+
       <img
         src={getAvatarUrl(avatarPresetId)}
         alt={name}
-        className={`${currentSize.img} bg-slate-900/80 border border-indigo-500/30 object-contain ${imgClassName}`}
+        className={`relative z-10 ${currentSize.img} bg-slate-900/80 border border-indigo-500/30 object-contain ${imgClassName}`}
       />
       {hasBadge && badgeIcon && (
         <span

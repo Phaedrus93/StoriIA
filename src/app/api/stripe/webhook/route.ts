@@ -277,8 +277,13 @@ export async function POST(req: Request) {
 
       // ─── Abbonamento cancellato → torna a free ─────────────────────────────
       case "customer.subscription.deleted": {
+        const sub = data as any;
         await adminClient.from("families")
-          .update({ subscription_tier: "free", subscription_status: "canceled" })
+          .update({ 
+            subscription_tier: "free", 
+            subscription_status: "canceled",
+            stripe_current_period_end: new Date(sub.current_period_end * 1000).toISOString()
+          })
           .eq("id", familyId);
         await enforceSuspensionOnDowngrade(adminClient, familyId, "free");
         await notifyFamily({
@@ -288,6 +293,20 @@ export async function POST(req: Request) {
           message: "Il tuo abbonamento a pagamento è terminato. Il tuo profilo è tornato al piano Free.",
           actionLink: "/billing",
         });
+        break;
+      }
+
+      // ─── Abbonamento creato o aggiornato ──────────────────────────────────
+      case "customer.subscription.created":
+      case "customer.subscription.updated": {
+        const sub = data as any;
+        if (sub.current_period_end) {
+          await adminClient.from("families")
+            .update({ 
+              stripe_current_period_end: new Date(sub.current_period_end * 1000).toISOString()
+            })
+            .eq("id", familyId);
+        }
         break;
       }
 

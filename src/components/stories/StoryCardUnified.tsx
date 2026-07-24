@@ -8,7 +8,16 @@ import {
   CheckCircle2,
   Clock,
   Users,
+  Eye,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useState } from "react";
+import { useViewedPresets } from "@/hooks/useViewedPresets";
 
 export interface ChildProfileOption {
   id: string;
@@ -30,6 +39,7 @@ export interface UnifiedStory {
   created_at: string;
   pdf_storage_path?: string | null;
   assignments?: StoryAssignment[];
+  has_pending_report?: boolean;
 }
 
 interface StoryCardUnifiedProps {
@@ -52,12 +62,27 @@ export default function StoryCardUnified({
   loadingPdfId,
 }: StoryCardUnifiedProps) {
   const isPreset = story.source === "preset";
+  const [showPreview, setShowPreview] = useState(false);
+  const { isNew, markAsViewed } = useViewedPresets();
+  const isCurrentlyNew = isPreset ? isNew(story.id, story.created_at) : false;
+
   const firstLine = story.generated_text.split("\n")[0] || "Storia Senza Titolo";
   const title = firstLine.replace(/^#\s*/, "").trim();
   const assignments = story.assignments || [];
 
   return (
-    <div className="glass-card p-6 border-slate-800/80 hover:border-slate-700 space-y-5 transition-all duration-300 shadow-lg flex flex-col justify-between">
+    <>
+    <div 
+      className="glass-card p-6 border-slate-800/80 hover:border-slate-700 space-y-5 transition-all duration-300 shadow-lg flex flex-col justify-between relative"
+      onClick={() => {
+        if (isPreset) markAsViewed(story.id);
+      }}
+    >
+      {isCurrentlyNew && (
+        <div className="absolute -top-3 -right-3 bg-rose-500 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full shadow-lg shadow-rose-500/30 animate-pulse z-10">
+          Nuovo!
+        </div>
+      )}
       <div className="space-y-4">
         {/* Intestazione Card: Badge Fonte, Età, Data e Azioni Rapide */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -93,7 +118,11 @@ export default function StoryCardUnified({
               id={`pdf-btn-${story.id}`}
               onClick={() => onGenerateOrDownloadPdf(story)}
               disabled={loadingPdfId === story.id}
-              className="p-2 rounded-xl text-slate-300 hover:text-indigo-400 hover:bg-indigo-500/10 transition-colors flex items-center gap-1.5 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              className={`p-2 rounded-xl transition-colors flex items-center gap-1.5 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed ${
+                story.pdf_storage_path
+                  ? "text-emerald-300 hover:text-emerald-200 hover:bg-emerald-500/20 bg-emerald-500/10 border border-emerald-500/30"
+                  : "text-amber-300 hover:text-amber-200 hover:bg-amber-500/20 bg-amber-500/10 border border-amber-500/30"
+              }`}
               title={
                 story.pdf_storage_path
                   ? "Scarica PDF della favola"
@@ -102,14 +131,16 @@ export default function StoryCardUnified({
             >
               {loadingPdfId === story.id ? (
                 <>
-                  <span className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin inline-block" />
+                  <span className={`w-4 h-4 border-2 border-t-transparent rounded-full animate-spin inline-block ${
+                    story.pdf_storage_path ? "border-emerald-300" : "border-amber-300"
+                  }`} />
                   <span className="hidden sm:inline">
                     {story.pdf_storage_path ? "Apertura..." : "Generazione..."}
                   </span>
                 </>
               ) : story.pdf_storage_path ? (
                 <>
-                  <Download className="w-4 h-4 text-indigo-400" />
+                  <Download className="w-4 h-4 text-emerald-400" />
                   <span className="hidden sm:inline">Scarica PDF</span>
                 </>
               ) : (
@@ -119,25 +150,39 @@ export default function StoryCardUnified({
                 </>
               )}
             </button>
-
-            <button
-              id={`report-btn-${story.id}`}
-              onClick={() => onReportStory(story)}
-              className="p-2 rounded-xl text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 transition-colors"
-              title="Segnala contenuto problematico all'amministrazione"
-            >
-              <AlertTriangle className="w-4 h-4" />
-            </button>
-
             {!isPreset && (
-              <button
-                id={`delete-btn-${story.id}`}
-                onClick={() => onDeleteStory(story)}
-                className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                title="Elimina definitivamente questa storia"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
+              <>
+                <button
+                  onClick={() => setShowPreview(true)}
+                  className="p-2 rounded-xl text-slate-300 hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors flex items-center gap-1.5 text-xs font-medium"
+                  title="Anteprima rapida della storia"
+                >
+                  <Eye className="w-4 h-4" />
+                </button>
+                {story.has_pending_report ? (
+                  <div className="p-2 rounded-xl text-amber-500 bg-amber-500/10 flex items-center gap-1.5 text-xs font-medium" title="Questa storia è già stata segnalata ed è in attesa di revisione">
+                    <AlertTriangle className="w-4 h-4" />
+                    <span className="hidden sm:inline">Già Segnalata</span>
+                  </div>
+                ) : (
+                  <button
+                    id={`report-btn-${story.id}`}
+                    onClick={() => onReportStory(story)}
+                    className="p-2 rounded-xl text-slate-300 hover:text-amber-400 hover:bg-amber-500/10 transition-colors flex items-center gap-1.5 text-xs font-medium"
+                    title="Segnala questa storia per contenuto inappropriato"
+                  >
+                    <AlertTriangle className="w-4 h-4" />
+                  </button>
+                )}
+                <button
+                  id={`del-btn-${story.id}`}
+                  onClick={() => onDeleteStory(story)}
+                  className="p-2 rounded-xl text-slate-300 hover:text-red-400 hover:bg-red-500/10 transition-colors flex items-center gap-1.5 text-xs font-medium"
+                  title="Elimina definitivamente questa storia"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -229,5 +274,21 @@ export default function StoryCardUnified({
         </div>
       </div>
     </div>
+
+    {/* Modal Anteprima Rapida */}
+    <Dialog open={showPreview} onOpenChange={setShowPreview}>
+      <DialogContent className="sm:max-w-2xl bg-slate-950 border-slate-800 text-slate-200">
+        <DialogHeader>
+          <DialogTitle className="text-xl font-bold text-white flex items-center gap-2 border-b border-slate-800 pb-4">
+            <Eye className="w-5 h-5 text-indigo-400" />
+            Anteprima Rapida
+          </DialogTitle>
+        </DialogHeader>
+        <div className="mt-4 max-h-[60vh] overflow-y-auto custom-scrollbar p-4 bg-slate-900 rounded-xl border border-slate-800 whitespace-pre-wrap text-sm leading-relaxed font-serif">
+          {story.generated_text}
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

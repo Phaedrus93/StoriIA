@@ -153,6 +153,7 @@ export default function GamificationModal({
 }: GamificationModalProps) {
   const [activeTab, setActiveTab] = useState<Tab>("missions");
   const [shopFilter, setShopFilter] = useState<ShopFilter>("all");
+  const [narrativeFilter, setNarrativeFilter] = useState<"all" | "CHARACTER_TRAIT" | "SETTING_THEME" | "STORY_STYLE">("all");
 
   if (!isOpen) return null;
 
@@ -254,30 +255,7 @@ export default function GamificationModal({
   );
 
   const renderChildSelector = () => {
-    if (isChildMode || !childrenList || childrenList.length <= 1) return null;
-    return (
-      <div className="mb-4 p-3 rounded-2xl bg-slate-900/80 border border-slate-800 flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2 text-xs font-bold text-slate-300">
-          <Users className="w-4 h-4 text-indigo-400" />
-          <span>Profilo bambino su cui operare:</span>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          {childrenList.map((ch) => (
-            <button
-              key={ch.id}
-              onClick={() => onSelectChild && onSelectChild(ch.id)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                ch.id === childId
-                  ? "bg-amber-500/20 border border-amber-400/50 text-amber-300 shadow-sm"
-                  : "bg-slate-800/60 text-slate-400 hover:text-white"
-              }`}
-            >
-              {ch.name} ({ch.adventure_points} ★)
-            </button>
-          ))}
-        </div>
-      </div>
-    );
+    return null;
   };
 
   // ── Render: Shop tab ────────────────────────────────────────────────────────
@@ -315,7 +293,7 @@ export default function GamificationModal({
           );
           const planOk = isPlanSufficient(cosm.requires_plan, familyTier);
           const canAfford = adventurePoints >= cosm.cost_points;
-          const locked = !planOk;
+          const locked = !planOk && !isUnlocked;
 
           return (
             <div
@@ -404,20 +382,50 @@ export default function GamificationModal({
 
   // ── Render: Narrative Shop tab ──────────────────────────────────────────────
 
-  const renderNarrativeShop = () => (
-    <div className="space-y-4">
-      {renderChildSelector()}
-      <div className="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-200 text-xs leading-relaxed">
-        I contenuti narrativi sbloccati con i Punti Avventura di un bambino diventano immediatamente disponibili per creare storie per <strong>tutti i figli della famiglia</strong>!
-      </div>
+  const renderNarrativeShop = () => {
+    const filteredNarrative = narrativeFilter === "all" 
+      ? narrativeCatalog 
+      : narrativeCatalog?.filter(i => i.content_type === narrativeFilter);
 
-      {!narrativeCatalog || narrativeCatalog.length === 0 ? (
-        <div className="text-center text-slate-400 text-sm py-8">
-          Nessun contenuto narrativo disponibile nel catalogo.
+    return (
+      <div className="space-y-4">
+        {renderChildSelector()}
+        <div className="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-200 text-xs leading-relaxed">
+          I contenuti narrativi sbloccati con i Punti Avventura di un bambino diventano immediatamente disponibili per creare storie per <strong>tutti i figli della famiglia</strong>!
         </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {narrativeCatalog.map((item) => {
+
+        {/* Narrative Filter */}
+        <div className="flex gap-2 p-1 bg-slate-900 rounded-xl border border-slate-800 overflow-x-auto custom-scrollbar">
+          {(["all", "STORY_STYLE", "CHARACTER_TRAIT", "SETTING_THEME"] as const).map((filterVal) => {
+            const labels: Record<string, string> = {
+              all: "Tutti i Contenuti",
+              STORY_STYLE: "Stili Narrativi",
+              CHARACTER_TRAIT: "Tratti Carattere",
+              SETTING_THEME: "Ambientazioni",
+            };
+            return (
+              <button
+                key={filterVal}
+                onClick={() => setNarrativeFilter(filterVal)}
+                className={`flex-1 min-w-max px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  narrativeFilter === filterVal
+                    ? "bg-slate-700 text-white shadow-md"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                }`}
+              >
+                {labels[filterVal]}
+              </button>
+            );
+          })}
+        </div>
+
+        {!filteredNarrative || filteredNarrative.length === 0 ? (
+          <div className="text-center text-slate-400 text-sm py-8">
+            Nessun contenuto narrativo disponibile per questa categoria.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {filteredNarrative.map((item) => {
             const isUnlocked = unlockedNarrative && unlockedNarrative.some(
               (u) => u.content_id === item.id
             );
@@ -489,6 +497,7 @@ export default function GamificationModal({
       )}
     </div>
   );
+  };
 
   // ── Render: My Badges tab ───────────────────────────────────────────────────
 
@@ -614,7 +623,7 @@ export default function GamificationModal({
               </h2>
               <div className="flex items-center gap-1 text-amber-300 font-bold text-sm">
                 <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                <span>{adventurePoints} Punti Avventura</span>
+                <span>{Intl.NumberFormat('it-IT', { notation: "compact", maximumFractionDigits: 1 }).format(adventurePoints)} Punti Avventura</span>
               </div>
             </div>
           </div>
@@ -645,7 +654,7 @@ export default function GamificationModal({
                 className={tabCls("shop")}
               >
                 <ShoppingBag className="w-4 h-4 shrink-0" />
-                <span>Negozio Cosmetici</span>
+                <span>Negozio (Badge, Cornici)</span>
               </button>
               <button
                 id="tab-narrative"
@@ -653,7 +662,7 @@ export default function GamificationModal({
                 className={tabCls("narrative")}
               >
                 <Sparkles className="w-4 h-4 shrink-0" />
-                <span>Contenuti Narrativi</span>
+                <span>Catalogo (Stili, Tratti, Ambienti)</span>
               </button>
             </>
           )}

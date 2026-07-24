@@ -95,8 +95,9 @@ export async function POST(req: Request) {
       }
 
       const preGiftTier = currentTier;
+      const durationMonths = gift.duration_months || 1;
       const expiresAt = new Date();
-      expiresAt.setMonth(expiresAt.getMonth() + 1);
+      expiresAt.setMonth(expiresAt.getMonth() + durationMonths);
 
       // Aggiorna la famiglia con il nuovo tier regalato per 1 mese
       await adminClient
@@ -144,7 +145,8 @@ export async function POST(req: Request) {
 
     // 4. Invia notifiche
     try {
-      const giftDesc = gift.type === "credits" ? `+${gift.amount_or_tier} crediti` : `1 mese di abbonamento ${gift.amount_or_tier.toUpperCase()}`;
+      const durationMonths = gift.duration_months || 1;
+      const giftDesc = gift.type === "credits" ? `+${gift.amount_or_tier} crediti` : `${durationMonths} mes${durationMonths === 1 ? "e" : "i"} di abbonamento ${gift.amount_or_tier.toUpperCase()}`;
       await notifyFamily({
         familyId: family.id,
         category: "billing",
@@ -171,6 +173,7 @@ export async function POST(req: Request) {
       code: gift.code,
       type: gift.type,
       amountOrTier: gift.amount_or_tier,
+      durationMonths: gift.duration_months || 1,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Errore durante il riscatto del codice regalo";

@@ -18,6 +18,7 @@ import {
   Rocket,
   Star,
 } from "lucide-react";
+import NotificationBell from "./NotificationBell";
 
 interface ParentProfileData {
   parent_display_name?: string;
@@ -112,9 +113,12 @@ export default function ParentSidebar({
             Stori<span className="text-indigo-400">IA</span>
           </span>
         </Link>
-        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700/60">
-          v2
-        </span>
+        <div className="flex items-center gap-2">
+          <NotificationBell />
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700/60">
+            v2
+          </span>
+        </div>
       </div>
 
       {/* Navigation Groups */}

@@ -3,9 +3,11 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { Sparkles, Plus, Trash2, UserCheck, AlertTriangle, X, Edit2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Library, Plus, Trash2, Edit2, AlertTriangle, Sparkles, UserCheck, X } from "lucide-react";
 import { evaluatePreDeleteCheck } from "@/lib/library/delete-helper";
 import { ResponsiveModal } from "@/components/ui/responsive-modal";
+import { useViewedPresets } from "@/hooks/useViewedPresets";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -24,6 +26,7 @@ interface NarrativeContent {
   icon_preset: string;
   isUnlocked: boolean;
   price_cents: number;
+  created_at?: string;
 }
 
 interface ChildProfile {
@@ -56,6 +59,7 @@ export default function CharactersPage() {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [children, setChildren] = useState<ChildProfile[]>([]);
   const [familyId, setFamilyId] = useState<string | null>(null);
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
 
   // Form Creazione / Modifica
@@ -75,6 +79,7 @@ export default function CharactersPage() {
     storyCount: number;
   } | null>(null);
 
+  const { isNew, markAsViewed } = useViewedPresets();
   const supabase = createClient();
 
   useEffect(() => {
@@ -142,6 +147,7 @@ export default function CharactersPage() {
     setName("");
     setCustomTrait("");
     setSelectedTraits([]);
+    setOwnerChildId(children.length > 0 ? children[0].id : "");
     setIsFormOpen(false);
   };
 
@@ -178,6 +184,7 @@ export default function CharactersPage() {
         body: JSON.stringify({
           name: name.trim(),
           traits: combinedTraits,
+          owner_child_profile_id: ownerChildId,
         }),
       });
       const data = await res.json();
@@ -221,12 +228,12 @@ export default function CharactersPage() {
   return (
     <div className="space-y-10">
       <div>
-        <Link
-          href="/dashboard"
+        <button
+          onClick={() => router.back()}
           className="text-xs font-semibold text-slate-400 hover:text-white transition-colors inline-flex items-center gap-1 mb-3"
         >
-          ← Torna alla Dashboard Genitore
-        </Link>
+          ← Torna indietro
+        </button>
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -305,23 +312,52 @@ export default function CharactersPage() {
           setIsFormOpen(open);
         }}
         title={editingCharId ? "Modifica Personaggio" : "Nuovo Personaggio"}
-        description="I personaggi possono essere scelti quando si genera una nuova avventura AI."
+        description="I personaggi possono essere scelti quando si generano nuove avventure."
+        footer={
+          children.length > 0 ? (
+            <>
+              <button 
+              type="button" 
+              disabled={isCreating} 
+              onClick={() => {
+                const form = document.getElementById("character-form") as HTMLFormElement;
+                form?.requestSubmit();
+              }}
+              className="btn-primary flex-1"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>{isCreating ? "Salvataggio..." : editingCharId ? "Salva Modifiche" : "Crea Personaggio"}</span>
+            </button>
+              <button
+                type="button"
+                onClick={() => setIsFormOpen(false)}
+                className="btn-secondary px-4 text-xs"
+              >
+                Annulla
+              </button>
+            </>
+          ) : null
+        }
       >
-        {children.length === 0 ? (
-          <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-sm">
-            Devi prima creare un profilo bambino nella sezione &quot;Profili Figli&quot; per associare un personaggio.
-          </div>
-        ) : (
-          <form onSubmit={handleAddOrEditCharacter} className="space-y-4">
+        <div className="pb-4">
+          {children.length === 0 ? (
+            <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-sm">
+              Devi prima creare un profilo bambino nella sezione &quot;Profili Figli&quot; per associare un personaggio.
+            </div>
+          ) : (
+            <form id="character-form" onSubmit={handleAddOrEditCharacter} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
                 Bambino Proprietario
               </label>
               <select
-                value={ownerChildId}
+                value={ownerChildId || ""}
                 onChange={(e) => setOwnerChildId(e.target.value)}
                 className="input-field"
               >
+                <option value="" disabled>
+                  Seleziona un bambino...
+                </option>
                 {children.map((c) => (
                   <option key={c.id} value={c.id} className="bg-slate-900">
                     {c.name}
@@ -379,18 +415,27 @@ export default function CharactersPage() {
                     .filter((t) => t.isUnlocked)
                     .map((trait) => {
                       const active = selectedTraits.includes(trait.name);
+                      const isCurrentlyNew = isNew(trait.id, trait.created_at || "");
                       return (
                         <button
                           key={trait.id}
                           type="button"
-                          onClick={() => toggleTrait(trait.name)}
-                          className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
+                          onClick={() => {
+                            toggleTrait(trait.name);
+                            markAsViewed(trait.id);
+                          }}
+                          className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border flex items-center gap-1.5 ${
                             active
                               ? "bg-amber-500/30 border-amber-500 text-amber-200 shadow-md shadow-amber-500/20 scale-105"
                               : "bg-amber-500/10 border-amber-500/40 text-amber-300 hover:bg-amber-500/20"
                           }`}
                         >
                           {trait.name}
+                          {isCurrentlyNew && (
+                            <span className="bg-rose-500 text-white text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full animate-pulse">
+                              Nuovo!
+                            </span>
+                          )}
                         </button>
                       );
                     })}
@@ -409,14 +454,22 @@ export default function CharactersPage() {
                 <div className="flex flex-wrap gap-1.5">
                   {unlockedTraits
                     .filter((t) => !t.isUnlocked)
-                    .map((trait) => (
-                      <span
-                        key={trait.id}
-                        className="px-2.5 py-1 rounded-full text-[10px] font-medium bg-slate-800/80 text-slate-500 border border-slate-700 cursor-not-allowed"
-                      >
-                        🔒 {trait.name}
-                      </span>
-                    ))}
+                    .map((trait) => {
+                      const isCurrentlyNew = isNew(trait.id, trait.created_at || "");
+                      return (
+                        <span
+                          key={trait.id}
+                          className="px-2.5 py-1 rounded-full text-[10px] font-medium bg-slate-800/80 text-slate-500 border border-slate-700 cursor-not-allowed flex items-center gap-1.5"
+                        >
+                          🔒 {trait.name}
+                          {isCurrentlyNew && (
+                            <span className="bg-rose-500 text-white text-[8px] font-bold uppercase px-1 py-0.5 rounded-full">
+                              Nuovo!
+                            </span>
+                          )}
+                        </span>
+                      );
+                    })}
                 </div>
               </div>
             )}
@@ -434,21 +487,9 @@ export default function CharactersPage() {
               />
             </div>
 
-            <div className="flex gap-2 pt-2">
-              <button type="submit" disabled={isCreating} className="btn-primary flex-1">
-                <Sparkles className="w-4 h-4" />
-                <span>{isCreating ? "Salvataggio..." : editingCharId ? "Salva Modifiche" : "Crea Personaggio"}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsFormOpen(false)}
-                className="btn-secondary px-4 text-xs"
-              >
-                Annulla
-              </button>
-            </div>
-          </form>
-        )}
+            </form>
+          )}
+        </div>
       </ResponsiveModal>
 
       <AlertDialog open={Boolean(deleteCandidate)} onOpenChange={(open) => !open && setDeleteCandidate(null)}>

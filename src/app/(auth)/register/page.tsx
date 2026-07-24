@@ -4,7 +4,8 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { BookOpen, Sparkles, Lock, Mail, Users, CheckCircle2 } from "lucide-react";
+import { BookOpen, Sparkles, Lock, Mail, Users, CheckCircle2, ScrollText } from "lucide-react";
+import { ResponsiveModal } from "@/components/ui/responsive-modal";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -15,6 +16,16 @@ export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [verificationSent, setVerificationSent] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  
+  const [termsModalOpen, setTermsModalOpen] = useState(false);
+  const [hasScrolledToBottom, setHasScrolledToBottom] = useState(false);
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const bottom = Math.abs(e.currentTarget.scrollHeight - e.currentTarget.scrollTop - e.currentTarget.clientHeight) <= 5;
+    if (bottom) {
+      setHasScrolledToBottom(true);
+    }
+  };
 
   const handleGoogleLogin = async () => {
     setGoogleLoading(true);
@@ -188,94 +199,149 @@ export default function RegisterPage() {
             </div>
 
             <form onSubmit={handleRegister} className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-              Email Genitore
-            </label>
-            <div className="relative">
-              <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-              <input
-                id="reg-email-input"
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="genitore@famiglia.it"
-                className="input-field input-field-icon"
-              />
-            </div>
-          </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-              Password (min. 6 caratteri)
-            </label>
-            <div className="relative">
-              <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-              <input
-                id="reg-password-input"
-                type="password"
-                required
-                minLength={6}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="input-field input-field-icon"
-              />
-            </div>
-          </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                  Email Genitore
+                </label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <input
+                    id="reg-email-input"
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="genitore@famiglia.it"
+                    className="input-field input-field-icon"
+                  />
+                </div>
+              </div>
 
-          <div className="flex items-start gap-2 pt-1">
-            <input
-              id="accept-terms-checkbox"
-              type="checkbox"
-              checked={acceptedTerms}
-              onChange={(e) => setAcceptedTerms(e.target.checked)}
-              className="mt-1 w-4 h-4 rounded border-slate-700 bg-slate-900 text-indigo-500 focus:ring-indigo-500"
-              required
-            />
-            <label
-              htmlFor="accept-terms-checkbox"
-              className="text-xs text-slate-300 leading-tight"
-            >
-              Dichiaro di essere maggiorenne e accetto i{" "}
-              <Link
-                href="/terms"
-                target="_blank"
-                className="text-indigo-400 hover:underline"
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                  Password (min. 6 caratteri)
+                </label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <input
+                    id="reg-password-input"
+                    type="password"
+                    required
+                    minLength={6}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="input-field input-field-icon"
+                  />
+                </div>
+              </div>
+              <div className="flex items-start gap-2 pt-1">
+                <input
+                  id="accept-terms-checkbox"
+                  type="checkbox"
+                  checked={acceptedTerms}
+                  onChange={(e) => setAcceptedTerms(e.target.checked)}
+                  disabled={!hasScrolledToBottom}
+                  className="mt-1 w-4 h-4 rounded border-slate-700 bg-slate-900 text-indigo-500 focus:ring-indigo-500 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+                  required
+                />
+                <label
+                  htmlFor="accept-terms-checkbox"
+                  className={`text-xs leading-tight ${!hasScrolledToBottom ? "text-slate-500 cursor-not-allowed" : "text-slate-300 cursor-pointer"}`}
+                >
+                  Dichiaro di essere maggiorenne e accetto i{" "}
+                  <button
+                    type="button"
+                    onClick={() => setTermsModalOpen(true)}
+                    className="text-indigo-400 hover:underline font-semibold"
+                  >
+                    Termini di Servizio e Privacy Policy
+                  </button>
+                  . {!hasScrolledToBottom && <span className="block text-[10px] text-amber-400 mt-1">Devi leggere i termini fino in fondo per accettare.</span>}
+                </label>
+              </div>
+
+              <button
+                id="btn-register-submit"
+                type="submit"
+                disabled={loading || googleLoading || !hasScrolledToBottom}
+                className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-md shadow-indigo-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed mt-2"
               >
-                Termini di Servizio
-              </Link>{" "}
-              e l&apos;
-              <Link
-                href="/privacy"
-                target="_blank"
-                className="text-indigo-400 hover:underline"
-              >
-                Informativa sulla Privacy (GDPR)
-              </Link>
-              .
-            </label>
-          </div>
-
-          <button
-            id="submit-register"
-            type="submit"
-            disabled={loading}
-            className="btn-primary w-full mt-2"
-          >
-            {loading ? (
-              <span>Creazione account in corso...</span>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4" />
-                <span>Inizia Subito</span>
-              </>
-            )}
-          </button>
-        </form>
-        </>
+                {loading ? (
+                  <span className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin"></div>
+                    Creazione in corso...
+                  </span>
+                ) : (
+                  <>
+                    <BookOpen className="w-4 h-4" />
+                    Crea Profilo Famiglia
+                  </>
+                )}
+              </button>
+            </form>
+          </>
         )}
+
+        <ResponsiveModal
+          open={termsModalOpen}
+          onOpenChange={setTermsModalOpen}
+          title="Termini di Servizio e Privacy"
+          description="Leggi attentamente le condizioni prima di procedere."
+        >
+          <div 
+            className="max-h-[60vh] overflow-y-auto p-4 bg-slate-900/50 rounded-xl border border-slate-800 text-xs text-slate-300 space-y-4"
+            onScroll={handleScroll}
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <ScrollText className="w-5 h-5 text-indigo-400" />
+              <h3 className="text-sm font-bold text-white">CONDIZIONI GENERALI</h3>
+            </div>
+            <p>
+              Benvenuto in StoriIA. Utilizzando i nostri servizi, accetti i seguenti termini e condizioni. 
+              Il nostro obiettivo è fornire un ambiente sicuro, educativo e divertente per la creazione di storie basate sull'intelligenza artificiale, nel rispetto della privacy di tutta la famiglia.
+            </p>
+            <h4 className="font-bold text-slate-200 mt-4">1. Uso del Servizio</h4>
+            <p>
+              Il servizio è destinato esclusivamente all'uso personale e non commerciale. Qualsiasi utilizzo abusivo, inclusa la generazione di contenuti inappropriati o che violino le linee guida della community, comporterà la sospensione immediata dell'account.
+            </p>
+            <h4 className="font-bold text-slate-200 mt-4">2. Privacy dei Minori (COPPA/GDPR-K)</h4>
+            <p>
+              StoriIA non raccoglie dati personali identificabili dei bambini oltre al nome di fantasia e ai tratti specificati per i personaggi. I genitori mantengono il controllo totale sull'account e sono responsabili per i profili creati. Le storie generate sono private e visibili solo alla famiglia.
+            </p>
+            <h4 className="font-bold text-slate-200 mt-4">3. Abbonamenti e Crediti</h4>
+            <p>
+              I piani di abbonamento si rinnovano automaticamente. I crediti inclusi nei piani non scadono ma sono legati all'account. È possibile disdire il rinnovo in qualsiasi momento. I crediti prepagati non sono rimborsabili.
+            </p>
+            <h4 className="font-bold text-slate-200 mt-4">4. Proprietà Intellettuale</h4>
+            <p>
+              Le storie generate dall'intelligenza artificiale sono concesse in licenza d'uso all'utente per scopi personali. StoriIA si riserva il diritto di utilizzare il sistema per migliorare i propri modelli generativi, ma i dati personali e i nomi dei bambini non verranno mai condivisi.
+            </p>
+            <h4 className="font-bold text-slate-200 mt-4">5. Limitazione di Responsabilità</h4>
+            <p>
+              StoriIA utilizza l'Intelligenza Artificiale (Google Gemini) per generare i testi. Sebbene implementiamo filtri rigorosi (Safety Settings), non possiamo garantire l'infallibilità assoluta del sistema. Il genitore è invitato a revisionare o leggere preventivamente le storie prima di assegnarle ai bambini.
+            </p>
+            <h4 className="font-bold text-slate-200 mt-4">6. Modifiche ai Termini</h4>
+            <p>
+              Ci riserviamo il diritto di modificare questi termini. Invieremo una notifica via email in caso di cambiamenti sostanziali. Continuando a utilizzare il servizio, accetti implicitamente le modifiche apportate.
+            </p>
+            <div className="pt-10 pb-4 text-center">
+              <p className="text-amber-400 font-bold mb-2">Hai raggiunto la fine del documento.</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setHasScrolledToBottom(true);
+                  setAcceptedTerms(true);
+                  setTermsModalOpen(false);
+                }}
+                className="btn-primary"
+              >
+                Accetta e Chiudi
+              </button>
+            </div>
+          </div>
+        </ResponsiveModal>
 
         <div className="mt-6 text-center text-sm text-slate-400">
           Hai già un account famiglia?{" "}

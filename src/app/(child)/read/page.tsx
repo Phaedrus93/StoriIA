@@ -215,19 +215,24 @@ export default function ChildReaderPage() {
         return;
       }
       if (data.signedUrl) {
-        window.open(data.signedUrl, "_blank", "noopener,noreferrer");
-        if (data.storagePath && !st.pdf_storage_path) {
-          setStories((prev) =>
-            prev.map((item) =>
-              item.id === st.id
-                ? { ...item, pdf_storage_path: data.storagePath }
-                : item
-            )
-          );
-          if (activeStory?.id === st.id) {
-            setActiveStory((prev) =>
-              prev ? { ...prev, pdf_storage_path: data.storagePath } : prev
+        if (st.pdf_storage_path) {
+          // If it already existed, open it
+          window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+        } else {
+          // Just generated, update state so button turns green
+          if (data.storagePath) {
+            setStories((prev) =>
+              prev.map((item) =>
+                item.id === st.id
+                  ? { ...item, pdf_storage_path: data.storagePath }
+                  : item
+              )
             );
+            if (activeStory?.id === st.id) {
+              setActiveStory((prev) =>
+                prev ? { ...prev, pdf_storage_path: data.storagePath } : prev
+              );
+            }
           }
         }
       }
@@ -417,6 +422,8 @@ export default function ChildReaderPage() {
       }
     }
   };
+  // Prevent double API calls for awarding points
+  const awardedStoriesRef = useRef<Set<string>>(new Set());
 
   const updateProgress = async (
     assignmentId: string | undefined,
@@ -438,7 +445,8 @@ export default function ChildReaderPage() {
         })
         .eq("id", assignmentId);
 
-      if (status === "completed" && selectedChildId) {
+      if (status === "completed" && selectedChildId && !awardedStoriesRef.current.has(assignmentId)) {
+        awardedStoriesRef.current.add(assignmentId);
         try {
           const gamRes = await fetch("/api/child/gamification", {
             method: "POST",
@@ -580,13 +588,21 @@ export default function ChildReaderPage() {
               <button
                 onClick={() => handleGenerateOrDownloadPDF(activeStory)}
                 disabled={loadingPdfId === activeStory.id}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/60 text-xs font-bold text-emerald-300 hover:text-emerald-200 transition-all shadow-sm disabled:opacity-50"
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-2xl border text-xs font-bold transition-all shadow-sm disabled:opacity-50 ${
+                  activeStory.pdf_storage_path
+                    ? "bg-emerald-600/20 hover:bg-emerald-600/30 border-emerald-500/40 text-emerald-300 hover:text-emerald-200"
+                    : "bg-amber-600/20 hover:bg-amber-600/30 border-amber-500/40 text-amber-300 hover:text-amber-200"
+                }`}
                 title={activeStory.pdf_storage_path ? "Scarica PDF favola" : "Genera PDF favola"}
               >
                 {loadingPdfId === activeStory.id ? (
-                  <span className="w-3.5 h-3.5 border-2 border-emerald-300 border-t-transparent rounded-full animate-spin inline-block" />
+                  <span className={`w-3.5 h-3.5 border-2 border-t-transparent rounded-full animate-spin inline-block ${
+                    activeStory.pdf_storage_path ? "border-emerald-300" : "border-amber-300"
+                  }`} />
                 ) : (
-                  <Download className="w-4 h-4 text-emerald-400" />
+                  <Download className={`w-4 h-4 ${
+                    activeStory.pdf_storage_path ? "text-emerald-400" : "text-amber-400"
+                  }`} />
                 )}
                 <span className="hidden md:inline">PDF</span>
               </button>
@@ -633,7 +649,7 @@ export default function ChildReaderPage() {
           </div>
 
           {/* Bottom Bar Compatta di Navigazione Pagine */}
-          <div className="shrink-0 px-4 md:px-8 py-3.5 bg-slate-900/90 border-t border-slate-800/80 backdrop-blur-md space-y-2.5">
+          <div className="shrink-0 px-4 md:px-8 pt-3.5 pb-[calc(0.875rem+env(safe-area-inset-bottom))] bg-slate-900/90 border-t border-slate-800/80 backdrop-blur-md space-y-2.5">
             <div className="w-full max-w-4xl mx-auto bg-slate-800/80 rounded-full h-1.5 overflow-hidden">
               <div
                 className="bg-gradient-to-r from-emerald-500 to-teal-400 h-full transition-all duration-300"
@@ -696,7 +712,7 @@ export default function ChildReaderPage() {
                 avatarPresetId={children.find((c) => c.id === selectedChildId)?.avatar_preset_id}
                 activeBadgeId={activeBadgeId}
                 activeFrameId={activeFrameId}
-                cosmeticsMap={Object.fromEntries(cosmetics.map(c => [c.id, c.icon_preset]))}
+                cosmeticsMap={Object.fromEntries(cosmetics.map(c => [c.id, c]))}
                 size="md"
                 imgClassName="border-emerald-500/40 shadow-lg"
               />
@@ -730,7 +746,7 @@ export default function ChildReaderPage() {
                 className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-amber-500/20 to-indigo-500/20 hover:from-amber-500/30 hover:to-indigo-500/30 border border-amber-400/50 text-amber-300 transition-all font-bold text-xs md:text-sm shadow-lg hover:scale-105"
               >
                 <Sparkles className="w-5 h-5 text-amber-400 animate-pulse" />
-                <span>★ {adventurePoints} Punti — Missioni & Premi</span>
+                <span>★ {Intl.NumberFormat('it-IT', { notation: "compact", maximumFractionDigits: 1 }).format(adventurePoints)} Punti — Missioni & Premi</span>
               </button>
 
               <button
@@ -738,7 +754,7 @@ export default function ChildReaderPage() {
                 className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-semibold text-slate-300 transition-colors shrink-0"
               >
                 <Lock className="w-4 h-4 text-amber-400" />
-                <span>Esci al Genitore</span>
+                <span>Esci</span>
               </button>
             </div>
           </div>

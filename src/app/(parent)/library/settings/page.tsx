@@ -3,9 +3,11 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { Library, Plus, Trash2, AlertTriangle, X, Sparkles, Edit2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Library, Plus, Trash2, AlertTriangle, X, Sparkles, Edit2, Compass } from "lucide-react";
 import { evaluatePreDeleteCheck } from "@/lib/library/delete-helper";
 import { ResponsiveModal } from "@/components/ui/responsive-modal";
+import { useViewedPresets } from "@/hooks/useViewedPresets";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -24,6 +26,7 @@ interface NarrativeContent {
   icon_preset: string;
   isUnlocked: boolean;
   price_cents: number;
+  created_at?: string;
 }
 
 interface ChildProfile {
@@ -66,6 +69,7 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<Setting[]>([]);
   const [children, setChildren] = useState<ChildProfile[]>([]);
   const [familyId, setFamilyId] = useState<string | null>(null);
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
 
   // Form Creazione / Modifica
@@ -84,6 +88,7 @@ export default function SettingsPage() {
     storyCount: number;
   } | null>(null);
 
+  const { isNew, markAsViewed } = useViewedPresets();
   const supabase = createClient();
 
   useEffect(() => {
@@ -213,12 +218,12 @@ export default function SettingsPage() {
   return (
     <div className="space-y-10">
       <div>
-        <Link
-          href="/dashboard"
+        <button
+          onClick={() => router.back()}
           className="text-xs font-semibold text-slate-400 hover:text-white transition-colors inline-flex items-center gap-1 mb-3"
         >
-          ← Torna alla Dashboard Genitore
-        </Link>
+          ← Torna indietro
+        </button>
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -297,14 +302,40 @@ export default function SettingsPage() {
           setIsFormOpen(open);
         }}
         title={editingSettingId ? "Modifica Ambientazione" : "Nuova Ambientazione"}
-        description="Le ambientazioni fanno da sfondo alle storie generate dall'intelligenza artificiale."
+        description="Le ambientazioni possono essere usate come sfondo per le storie AI generate."
+        footer={
+          children.length > 0 ? (
+            <>
+              <button 
+              type="button" 
+              disabled={isCreating} 
+              onClick={() => {
+                const form = document.getElementById("setting-form") as HTMLFormElement;
+                form?.requestSubmit();
+              }}
+              className="btn-primary flex-1"
+            >
+              <Compass className="w-4 h-4" />
+              <span>{isCreating ? "Salvataggio..." : editingSettingId ? "Salva Modifiche" : "Crea Ambientazione"}</span>
+            </button>
+              <button
+                type="button"
+                onClick={() => setIsFormOpen(false)}
+                className="btn-secondary px-4 text-xs"
+              >
+                Annulla
+              </button>
+            </>
+          ) : null
+        }
       >
-        {children.length === 0 ? (
-          <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-sm">
-            Devi prima creare un profilo bambino per associare un&apos;ambientazione.
-          </div>
-        ) : (
-          <form onSubmit={handleAddOrEditSetting} className="space-y-4">
+        <div className="pb-4">
+          {children.length === 0 ? (
+            <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-sm">
+              Devi prima creare un profilo bambino nella sezione &quot;Profili Figli&quot; per associare un'ambientazione.
+            </div>
+          ) : (
+            <form id="setting-form" onSubmit={handleAddOrEditSetting} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
                 Bambino Proprietario
@@ -330,20 +361,32 @@ export default function SettingsPage() {
                 <div className="space-y-1.5 max-h-40 overflow-y-auto p-1">
                   {unlockedThemes
                     .filter((t) => t.isUnlocked)
-                    .map((theme) => (
-                      <button
-                        key={theme.id}
-                        type="button"
-                        onClick={() => { setName(theme.name); setDescription(theme.description); }}
-                        className="w-full text-left p-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/40 transition-colors text-xs relative"
-                      >
-                        <span className="absolute top-1.5 right-2 text-[9px] font-bold text-amber-400 bg-amber-500/20 px-1.5 py-0.5 rounded-full">
-                          🔓 Sbloccata
-                        </span>
-                        <strong className="text-amber-300 block pr-16">{theme.name}</strong>
-                        <span className="text-slate-400 line-clamp-1">{theme.description}</span>
-                      </button>
-                    ))}
+                    .map((theme) => {
+                      const isCurrentlyNew = isNew(theme.id, (theme as any).created_at || "");
+                      return (
+                        <button
+                          key={theme.id}
+                          type="button"
+                          onClick={() => {
+                            applyPreset({ name: theme.name, description: theme.description });
+                            markAsViewed(theme.id);
+                          }}
+                          className="px-3 py-1.5 rounded-xl text-left text-xs font-medium bg-amber-500/10 border border-amber-500/40 text-amber-300 hover:bg-amber-500/20 transition-all flex flex-col gap-1 relative overflow-hidden"
+                        >
+                          <span className="font-bold flex items-center gap-1.5">
+                            {theme.name}
+                            {isCurrentlyNew && (
+                              <span className="bg-rose-500 text-white text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full animate-pulse">
+                                Nuovo!
+                              </span>
+                            )}
+                          </span>
+                          <span className="text-[10px] text-amber-400/70 line-clamp-2">
+                            {theme.description}
+                          </span>
+                        </button>
+                      );
+                    })}
                 </div>
               </div>
             )}
@@ -360,6 +403,31 @@ export default function SettingsPage() {
                     <span className="underline underline-offset-2">Negozio Narrativo</span>
                   </span>
                 </Link>
+                <div className="mt-2 space-y-1.5">
+                    {unlockedThemes
+                    .filter((t) => !t.isUnlocked)
+                    .map((theme) => {
+                      const isCurrentlyNew = isNew(theme.id, (theme as any).created_at || "");
+                      return (
+                        <div
+                          key={theme.id}
+                          className="px-3 py-1.5 rounded-xl text-left text-xs font-medium bg-slate-800/80 border border-slate-700 text-slate-500 flex flex-col gap-1 relative overflow-hidden cursor-not-allowed"
+                        >
+                          <span className="font-bold flex items-center gap-1.5">
+                            🔒 {theme.name}
+                            {isCurrentlyNew && (
+                              <span className="bg-rose-500 text-white text-[8px] font-bold uppercase px-1 py-0.5 rounded-full">
+                                Nuovo!
+                              </span>
+                            )}
+                          </span>
+                          <span className="text-[10px] text-slate-600 line-clamp-2">
+                            {theme.description}
+                          </span>
+                        </div>
+                      );
+                    })}
+                </div>
               </div>
             )}
 
@@ -410,21 +478,9 @@ export default function SettingsPage() {
               />
             </div>
 
-            <div className="flex gap-2 pt-2">
-              <button type="submit" disabled={isCreating} className="btn-primary flex-1">
-                <Sparkles className="w-4 h-4" />
-                <span>{isCreating ? "Salvataggio..." : editingSettingId ? "Salva Modifiche" : "Crea Ambientazione"}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsFormOpen(false)}
-                className="btn-secondary px-4 text-xs"
-              >
-                Annulla
-              </button>
-            </div>
-          </form>
-        )}
+            </form>
+          )}
+        </div>
       </ResponsiveModal>
 
       <AlertDialog open={Boolean(deleteCandidate)} onOpenChange={(open) => !open && setDeleteCandidate(null)}>

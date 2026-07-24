@@ -28,6 +28,7 @@ interface NotificationItem {
 export default function NotificationsPage() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<"unread" | "history">("unread");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const router = useRouter();
 
@@ -60,12 +61,9 @@ export default function NotificationsPage() {
   }
 
   async function handleClearRead() {
-    await fetch("/api/notifications", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "clear_read" }),
-    });
-    setNotifications((prev) => prev.filter((n) => !n.is_read));
+    // Il pulsante "Pulisci lette" adesso si limita a segnare tutto come letto,
+    // in modo che finiscano nella tab Storico senza mai essere eliminate dal DB.
+    await handleMarkAllRead();
   }
 
   async function handleNotificationClick(notif: NotificationItem) {
@@ -97,10 +95,15 @@ export default function NotificationsPage() {
     }
   }
 
-  const filtered =
+  const filteredByCategory =
     selectedCategory === "all"
       ? notifications
       : notifications.filter((n) => n.category === selectedCategory);
+
+  const filtered =
+    viewMode === "unread"
+      ? filteredByCategory.filter((n) => !n.is_read)
+      : filteredByCategory;
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 
@@ -108,12 +111,12 @@ export default function NotificationsPage() {
     <div className="space-y-6 max-w-4xl mx-auto py-4">
       {/* Header */}
       <div>
-        <Link
-          href="/dashboard"
-          className="inline-block text-xs font-semibold text-indigo-400 hover:text-indigo-300 mb-3"
+        <button
+          onClick={() => router.back()}
+          className="text-xs font-semibold text-slate-400 hover:text-white transition-colors inline-flex items-center gap-1 mb-3"
         >
-          ← Torna alla Dashboard
-        </Link>
+          ← Torna indietro
+        </button>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
@@ -148,7 +151,33 @@ export default function NotificationsPage() {
       </div>
 
       {/* Tabs / Filter */}
-      <div className="flex gap-2 flex-wrap">
+      <div className="flex flex-col gap-4">
+        {/* Main Tabs (Non Lette / Storico) */}
+        <div className="flex gap-2 p-1 bg-slate-900 rounded-2xl w-max border border-slate-800">
+          <button
+            onClick={() => setViewMode("unread")}
+            className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all ${
+              viewMode === "unread"
+                ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            Non Lette
+          </button>
+          <button
+            onClick={() => setViewMode("history")}
+            className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all ${
+              viewMode === "history"
+                ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            Storico
+          </button>
+        </div>
+
+        {/* Categories */}
+        <div className="flex gap-2 flex-wrap">
         {[
           { key: "all", label: "Tutte" },
           { key: "billing", label: "Abbonamenti & Scadenze" },
@@ -169,6 +198,7 @@ export default function NotificationsPage() {
             {tab.label}
           </button>
         ))}
+        </div>
       </div>
 
       {/* List */}

@@ -167,7 +167,7 @@ export async function GET(
       .replace(/_+/g, "_")
       .substring(0, 40);
 
-    return new NextResponse(pdfBuffer, {
+    return new NextResponse(pdfBuffer as any, {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",

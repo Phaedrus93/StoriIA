@@ -21,7 +21,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const { name, traits, image_url } = await req.json();
+    const { name, traits, image_url, owner_child_profile_id } = await req.json();
 
     if (!name || !name.trim()) {
       return NextResponse.json({ error: "Il nome del personaggio è obbligatorio." }, { status: 400 });
@@ -77,6 +77,7 @@ export async function POST(req: Request) {
         family_id: family.id,
         name: name.trim(),
         traits: traits?.trim() || null,
+        owner_child_profile_id: owner_child_profile_id || null,
         image_url: image_url || "/avatars/fox.svg",
         is_preset: false,
       })

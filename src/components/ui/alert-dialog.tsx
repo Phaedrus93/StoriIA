@@ -48,7 +48,7 @@ export function AlertDialogTrigger({
   if (asChild && React.isValidElement(children)) {
     return React.cloneElement(children as React.ReactElement<any>, {
       onClick: (e: React.MouseEvent) => {
-        children.props.onClick?.(e);
+        (children as React.ReactElement<any>).props.onClick?.(e);
         onClick?.(e as any);
         onOpenChange(true);
       },

@@ -14,6 +14,8 @@ import {
   Sparkles,
   Users,
   MinusCircle,
+  Gift,
+  Copy,
 } from "lucide-react";
 import ConfirmationModal from "@/components/ConfirmationModal";
 
@@ -25,6 +27,7 @@ interface BillingSummary {
   addon_children_count: number;
   pending_addon_children_count?: number | null;
   stripe_subscription_id?: string | null;
+  stripe_current_period_end?: string | null;
 }
 
 interface LedgerEntry {
@@ -42,6 +45,8 @@ export default function ManageBillingPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [activeGiftCodes, setActiveGiftCodes] = useState<any[]>([]);
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [modalConfig, setModalConfig] = useState<{
@@ -80,6 +85,7 @@ export default function ManageBillingPage() {
             addon_children_count: statusData.addonCount || 0,
             pending_addon_children_count: statusData.pendingAddonCount ?? null,
             stripe_subscription_id: statusData.stripeSubscriptionId || null,
+            stripe_current_period_end: statusData.stripeCurrentPeriodEnd || null,
           });
         }
         if (statusData.ledger) {
@@ -91,11 +97,23 @@ export default function ManageBillingPage() {
         const ledgerData = await ledgerRes.json();
         setLedger(ledgerData.entries || []);
       }
+      const codesRes = await fetch("/api/billing/gift-codes", { cache: "no-store" });
+      if (codesRes.ok) {
+        const codesData = await codesRes.json();
+        const active = (codesData.purchasedCodes || []).filter((c: any) => c.status === "active");
+        setActiveGiftCodes(active);
+      }
     } catch {
       setErrorMsg("Impossibile caricare i dati dell'abbonamento.");
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCopyCode = (code: string) => {
+    navigator.clipboard.writeText(code);
+    setCopiedCode(code);
+    setTimeout(() => setCopiedCode(null), 2000);
   };
 
   const executeDowngrade = async (targetTier: "free" | "premium") => {
@@ -317,6 +335,21 @@ export default function ManageBillingPage() {
               <h2 className="text-2xl font-bold uppercase mt-1">
                 {family?.subscription_tier || "free"}
               </h2>
+              {family?.stripe_current_period_end && (
+                <div className="text-xs text-slate-400 mt-1 flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5" />
+                  {family.subscription_status === "canceling_at_period_end" || family.subscription_status === "canceled"
+                    ? "Scade il: "
+                    : "Prossimo rinnovo: "}
+                  <span className="font-medium text-slate-300">
+                    {new Date(family.stripe_current_period_end).toLocaleDateString("it-IT", {
+                      day: "2-digit",
+                      month: "long",
+                      year: "numeric"
+                    })}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-3 bg-slate-800/60 px-4 py-2.5 rounded-xl border border-slate-700/60">
@@ -341,7 +374,7 @@ export default function ManageBillingPage() {
                   </div>
                   {pendingAddons !== null && pendingAddons !== undefined ? (
                     <div className="text-xs text-amber-300 font-semibold mt-0.5">
-                      da: {currentAddons}, a partire dal prossimo rinnovo: {pendingAddons}
+                      {pendingAddons} profili add-on attivi a partire dal: {family?.stripe_current_period_end ? new Date(family.stripe_current_period_end).toLocaleDateString("it-IT", { day: '2-digit', month: '2-digit', year: 'numeric' }) : "prossimo rinnovo"}
                     </div>
                   ) : (
                     <div className="text-xs text-slate-400 mt-0.5">
@@ -364,26 +397,26 @@ export default function ManageBillingPage() {
           )}
 
           {/* Azioni del Piano */}
-          <div className="pt-4 border-t border-slate-800 flex flex-wrap items-center gap-3">
+          <div className="pt-4 border-t border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
             {family?.subscription_tier === "family" && (
               <button
                 onClick={() => handleDowngrade("premium")}
                 disabled={actionLoading}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium border border-slate-700 transition disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium border border-slate-700 transition disabled:opacity-50 w-full sm:w-auto"
               >
                 <ArrowDownCircle className="h-4 w-4 text-indigo-400" />
                 Downgrade a Premium
               </button>
             )}
 
-            {family?.subscription_tier !== "free" && (
+            {family?.subscription_tier !== "free" && process.env.NEXT_PUBLIC_DEBUG === "true" && (
               <button
                 onClick={() => handleDowngrade("free")}
                 disabled={actionLoading}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium border border-slate-700 transition disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium border border-slate-700 transition disabled:opacity-50 w-full sm:w-auto"
               >
                 <ArrowDownCircle className="h-4 w-4 text-slate-400" />
-                Passa a Free
+                Passa a Free [DEBUG]
               </button>
             )}
 
@@ -393,7 +426,7 @@ export default function ManageBillingPage() {
                 <button
                   onClick={handleCancelSubscription}
                   disabled={actionLoading}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 text-sm font-medium border border-rose-500/30 transition disabled:opacity-50"
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 text-sm font-medium border border-rose-500/30 transition disabled:opacity-50 w-full sm:w-auto"
                 >
                   <ShieldAlert className="h-4 w-4" />
                   Annulla Abbonamento (a fine periodo)
@@ -404,7 +437,7 @@ export default function ManageBillingPage() {
               <button
                 onClick={handleReactivateSubscription}
                 disabled={actionLoading}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 text-sm font-medium border border-emerald-500/30 transition disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 text-sm font-medium border border-emerald-500/30 transition disabled:opacity-50 w-full sm:w-auto"
               >
                 <CheckCircle2 className="h-4 w-4" />
                 Riattiva Abbonamento
@@ -413,11 +446,58 @@ export default function ManageBillingPage() {
           </div>
         </div>
 
+        {/* Sezione Codici Regalo Attivi */}
+        {activeGiftCodes.length > 0 && (
+          <div className="p-6 md:p-8 rounded-2xl bg-slate-900/80 border border-indigo-500/30 backdrop-blur-xl shadow-xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Gift className="h-5 w-5 text-indigo-400" />
+                <h3 className="text-lg font-semibold text-white">I tuoi Regali da Consegnare</h3>
+              </div>
+            </div>
+            <p className="text-sm text-slate-400">Questi sono i codici regalo che hai acquistato ma non sono ancora stati riscattati. Condividi il link o il codice con chi vuoi.</p>
+            
+            <div className="space-y-3 mt-4">
+              {activeGiftCodes.map((code) => (
+                <div key={code.id} className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-xl bg-slate-800/50 border border-slate-700/50">
+                  <div>
+                    <div className="font-bold text-slate-200">
+                      {code.type === "credits" ? `${code.amount_or_tier} Crediti AI` : `Abbonamento ${code.amount_or_tier.toUpperCase()}`}
+                    </div>
+                    <div className="text-xs text-slate-400 mt-1">Acquistato il {new Date(code.created_at).toLocaleDateString("it-IT")}</div>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-sm bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 text-indigo-300 font-bold tracking-wider">
+                      {code.code}
+                    </span>
+                    <button
+                      onClick={() => handleCopyCode(`${window.location.origin}/billing/redeem?code=${code.code}`)}
+                      className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+                      title="Copia link per il riscatto"
+                    >
+                      {copiedCode === `${window.location.origin}/billing/redeem?code=${code.code}` ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Storico Pagamenti / Movimenti */}
         <div className="p-6 md:p-8 rounded-2xl bg-slate-900/80 border border-slate-800 backdrop-blur-xl shadow-xl space-y-4">
-          <div className="flex items-center gap-2">
-            <History className="h-5 w-5 text-indigo-400" />
-            <h3 className="text-lg font-semibold">Storico Transazioni & Crediti</h3>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <History className="h-5 w-5 text-indigo-400" />
+              <h3 className="text-lg font-semibold">Storico Transazioni & Crediti</h3>
+            </div>
+            <Link
+              href="/billing/history"
+              className="text-sm text-indigo-400 hover:text-indigo-300 font-medium flex items-center gap-1 transition"
+            >
+              Storico Completo Regali →
+            </Link>
           </div>
 
           {ledger.length === 0 ? (
@@ -431,7 +511,6 @@ export default function ManageBillingPage() {
                   <tr className="border-b border-slate-800 text-xs uppercase tracking-wider text-slate-400">
                     <th className="py-3 px-4">Data</th>
                     <th className="py-3 px-4">Descrizione</th>
-                    <th className="py-3 px-4">Tipo</th>
                     <th className="py-3 px-4 text-right">Variazione</th>
                   </tr>
                 </thead>
@@ -447,11 +526,6 @@ export default function ManageBillingPage() {
                       </td>
                       <td className="py-3 px-4 font-medium text-slate-200">
                         {item.description}
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className="px-2 py-0.5 rounded text-xs bg-slate-800 text-slate-300 border border-slate-700">
-                          {item.transaction_type}
-                        </span>
                       </td>
                       <td
                         className={`py-3 px-4 text-right font-bold ${

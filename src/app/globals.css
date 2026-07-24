@@ -106,6 +106,56 @@
   border-color: var(--text-muted);
 }
 
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.4);
+}
+
+/* Gamification Frame Effects */
+.frame-effect-solid {
+  box-shadow: 0 0 0 2px var(--frame-color);
+}
+
+.frame-effect-glow {
+  box-shadow: 0 0 0 2px var(--frame-color), 0 0 40px 15px var(--frame-color);
+}
+
+.frame-effect-sparkling {
+  /* Border handled by SVG in ChildAvatarWithBadge */
+}
+
+.frame-effect-flame {
+  border: 2px solid var(--frame-color);
+  box-shadow: 
+    0 0 20px 8px var(--frame-color),
+    0 -10px 25px 5px var(--frame-color);
+  animation: flame-flicker 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes flame-flicker {
+  0% { 
+    box-shadow: 
+      0 0 20px 8px var(--frame-color),
+      0 -15px 30px 5px var(--frame-color),
+      0 -25px 40px 0px var(--frame-color);
+  }
+  100% { 
+    box-shadow: 
+      0 0 30px 10px var(--frame-color),
+      0 -30px 45px 8px var(--frame-color),
+      0 -55px 60px 5px var(--frame-color);
+  }
+}
+
+@keyframes sparkling-ants {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+.animate-sparkling-ants {
+  animation: sparkling-ants 1s linear infinite;
+}
+
 .input-field {
   background: rgba(15, 23, 42, 0.7);
   border: 1px solid var(--border-color);

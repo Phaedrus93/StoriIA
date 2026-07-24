@@ -19,29 +19,29 @@ interface ChildProfile {
 
 export default function DashboardPage() {
   const [children, setChildren] = useState<ChildProfile[]>([]);
-  const [cosmeticsMap, setCosmeticsMap] = useState<Record<string, string>>({});
+  const [cosmeticsMap, setCosmeticsMap] = useState<Record<string, any>>({});
   const [parentProfile, setParentProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadData() {
       const supabase = createClient();
-      const [{ data }, { data: cosmData }, profileRes] = await Promise.all([
+      const [{ data }, { data: cosmeticsData }, profileRes] = await Promise.all([
         supabase
           .from("child_profiles")
           .select("id, name, birth_year, avatar_preset_id, adventure_points, active_badge_id, active_frame_id")
           .order("created_at", { ascending: true }),
-        supabase.from("cosmetic_items").select("id, icon_preset"),
+        supabase.from("cosmetic_items").select("*"),
         fetch("/api/family/profile", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
       ]);
 
-      const map: Record<string, string> = {};
-      if (cosmData) {
-        cosmData.forEach((c: any) => {
-          map[c.id] = c.icon_preset;
+      if (cosmeticsData) {
+        const map: Record<string, any> = {};
+        cosmeticsData.forEach((c: any) => {
+          map[c.id] = c;
         });
+        setCosmeticsMap(map);
       }
-      setCosmeticsMap(map);
       setChildren(data || []);
       if (profileRes?.profile) {
         setParentProfile(profileRes.profile);

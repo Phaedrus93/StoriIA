@@ -41,6 +41,7 @@ interface NarrativeContent {
   icon_preset: string;
   isUnlocked: boolean;
   price_cents: number;
+  created_at?: string;
 }
 
 const DEFAULT_MORALS = [
@@ -288,10 +289,10 @@ export default function NewStoryPage() {
     <div className="max-w-4xl mx-auto space-y-8 relative">
       <div>
         <Link
-          href="/dashboard"
+          href="/stories"
           className="text-xs font-semibold text-slate-400 hover:text-white transition-colors inline-flex items-center gap-1 mb-3"
         >
-          ← Torna alla Dashboard Genitore
+          ← Torna alle tue Storie
         </Link>
         <h1 className="text-3xl font-bold flex items-center gap-3">
           <Sparkles className="w-8 h-8 text-amber-400" />

@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { getAvatarUrl, registerDynamicAvatarPresets } from "@/lib/avatars";
 import { ResponsiveModal } from "@/components/ui/responsive-modal";
+import ConfirmationModal from "@/components/ConfirmationModal";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -52,12 +53,12 @@ interface ChildProfile {
 
 export default function ChildrenPage() {
   const [children, setChildren] = useState<ChildProfile[]>([]);
-  const [cosmeticsMap, setCosmeticsMap] = useState<Record<string, string>>({});
+  const [cosmeticsMap, setCosmeticsMap] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [familyId, setFamilyId] = useState<string | null>(null);
 
   // Preset avatar dinamici dal database (tutti gli attivi)
-  const [avatarPresets, setAvatarPresets] = useState<any[]>(APP_CONFIG.defaultAvatarPresets);
+  const [avatarPresets, setAvatarPresets] = useState<any[]>([...APP_CONFIG.defaultAvatarPresets]);
 
   // Stato per il negozio gamification e contenuti
   const [showGamificationModal, setShowGamificationModal] = useState(false);
@@ -111,7 +112,7 @@ export default function ChildrenPage() {
     if (familyData) setFamilyId(familyData.id);
 
     // Carichiamo anche i preset avatar attivi dal DB
-    let presetsList = APP_CONFIG.defaultAvatarPresets;
+    let presetsList: any[] = [...APP_CONFIG.defaultAvatarPresets];
     try {
       const resPresets = await fetch("/api/family/avatar-presets");
       if (resPresets.ok) {
@@ -128,13 +129,13 @@ export default function ChildrenPage() {
 
     const [{ data }, { data: cosmData }] = await Promise.all([
       supabase.from("child_profiles").select("*").order("created_at", { ascending: true }),
-      supabase.from("cosmetic_items").select("id, icon_preset"),
+      supabase.from("cosmetic_items").select("*"),
     ]);
 
-    const map: Record<string, string> = {};
+    const map: Record<string, any> = {};
     if (cosmData) {
       cosmData.forEach((c: any) => {
-        map[c.id] = c.icon_preset;
+        map[c.id] = c;
       });
     }
     setCosmeticsMap(map);
@@ -152,6 +153,13 @@ export default function ChildrenPage() {
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  const [confirmConfig, setConfirmConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({ isOpen: false, title: "", message: "", onConfirm: () => {} });
+
   const handleReactivateChild = async (child: ChildProfile) => {
     setSuspensionLoading(child.id);
     setErrorMessage(null);
@@ -165,9 +173,14 @@ export default function ChildrenPage() {
       if (res.ok) {
         await loadChildren();
       } else if (data.requiresUpgrade) {
-        if (confirm(data.error + "\n\nVuoi andare subito alla pagina Abbonamenti per estendere il tuo piano?")) {
-          window.location.href = "/billing";
-        }
+        setConfirmConfig({
+          isOpen: true,
+          title: "Piano da Estendere",
+          message: data.error + "\n\nVuoi andare subito alla pagina Abbonamenti per estendere il tuo piano?",
+          onConfirm: () => {
+            window.location.href = "/billing";
+          }
+        });
       } else {
         alert(data.error || "Errore nella riattivazione del profilo");
       }
@@ -253,14 +266,15 @@ export default function ChildrenPage() {
         setName("");
         setBirthYear("");
         setGender("neutral");
+        setIsFormOpen(false);
       }
       loadChildren();
     } catch (err: unknown) {
       setErrorMessage(
         err instanceof Error ? err.message : "Impossibile salvare il profilo."
       );
+    } finally {
       setIsCreating(false);
-      setIsFormOpen(false);
     }
   };
 
@@ -377,7 +391,6 @@ export default function ChildrenPage() {
                     : "bg-amber-500/15 text-amber-300 border-amber-500/30"
                 }`}>
                   {childLimitInfo.currentCount} / {childLimitInfo.maxAllowed}
-                  {childLimitInfo.addonCount > 0 && ` (+${childLimitInfo.addonCount} add-on)`}
                 </span>
               )}
             </div>
@@ -406,30 +419,7 @@ export default function ChildrenPage() {
         </div>
       </div>
 
-      {/* Banner Gamification info per i genitori */}
-      <div className="glass-card p-5 border-amber-500/30 bg-gradient-to-r from-amber-500/10 to-indigo-500/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex items-start gap-3">
-          <Sparkles className="w-6 h-6 text-amber-400 shrink-0 mt-0.5" />
-          <div>
-            <h3 className="font-bold text-white text-sm">
-              Punti Avventura, Gamification & Contenuti Narrativi
-            </h3>
-            <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-              I bambini guadagnano <strong className="text-amber-300">+15 Punti Avventura</strong> per ogni storia completata, oltre a punti bonus con le <strong className="text-indigo-300">Missioni di Lettura</strong>. Con i punti possono sbloccare badge, cornici e <strong className="text-amber-300">tratti e stili narrativi</strong> per tutta la famiglia!
-            </p>
-          </div>
-        </div>
-        {children.length > 0 && (
-          <button
-            type="button"
-            onClick={() => handleOpenGamification(children[0].id)}
-            className="btn-primary text-xs shrink-0 flex items-center gap-2 py-2.5 px-4 bg-gradient-to-r from-amber-500 to-indigo-500 hover:opacity-95"
-          >
-            <Sparkles className="w-4 h-4" />
-            <span>Apri Negozio & Premi</span>
-          </button>
-        )}
-      </div>
+
 
       {/* Elenco Profili */}
       {loading ? (
@@ -537,6 +527,20 @@ export default function ChildrenPage() {
         </div>
       )}
 
+      <ConfirmationModal
+        isOpen={confirmConfig.isOpen}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        onConfirm={() => {
+          confirmConfig.onConfirm();
+          setConfirmConfig({ ...confirmConfig, isOpen: false });
+        }}
+        onClose={() => setConfirmConfig({ ...confirmConfig, isOpen: false })}
+        confirmLabel="Vai agli Abbonamenti"
+        cancelLabel="Annulla"
+        variant="info"
+      />
+
       {/* Form Dialog/Sheet per Aggiungere o Modificare */}
       <ResponsiveModal
         open={isFormOpen}
@@ -545,16 +549,39 @@ export default function ChildrenPage() {
           setIsFormOpen(open);
         }}
         title={editingChildId ? "Modifica Profilo Figlio" : "Aggiungi Profilo Figlio"}
-        description={editingChildId ? "Aggiorna le informazioni o l'avatar del bambino." : "Compila il form per registrare un nuovo lettore in famiglia."}
+        description="I profili servono per generare storie adatte all'età e raccogliere Punti Avventura."
+        footer={
+          <>
+            <button 
+              type="button" 
+              disabled={isCreating} 
+              onClick={() => {
+                const form = document.getElementById("child-profile-form") as HTMLFormElement;
+                form?.requestSubmit();
+              }}
+              className="btn-primary flex-1"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>{isCreating ? "Salvataggio..." : editingChildId ? "Salva Modifiche" : "Crea Profilo Figlio"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsFormOpen(false)}
+              className="btn-secondary px-4 text-xs"
+            >
+              Annulla
+            </button>
+          </>
+        }
       >
-        <form onSubmit={handleAddOrEditChild} className="space-y-4">
-          {errorMessage && (
-            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
-              {errorMessage}
-            </div>
-          )}
-
-          <div>
+        <div className="pb-4">
+          <form id="child-profile-form" onSubmit={handleAddOrEditChild} className="space-y-4">
+            {errorMessage && (
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+                {errorMessage}
+              </div>
+            )}
+            <div>
             <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
               Nome Bambino
             </label>
@@ -652,20 +679,8 @@ export default function ChildrenPage() {
             </div>
           </div>
 
-          <div className="flex gap-2 pt-2">
-            <button type="submit" disabled={isCreating} className="btn-primary flex-1">
-              <Sparkles className="w-4 h-4" />
-              <span>{isCreating ? "Salvataggio..." : editingChildId ? "Salva Modifiche" : "Crea Profilo Figlio"}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsFormOpen(false)}
-              className="btn-secondary px-4 text-xs"
-            >
-              Annulla
-            </button>
-          </div>
-        </form>
+          </form>
+        </div>
       </ResponsiveModal>
 
       <AlertDialog open={Boolean(deleteChildId)} onOpenChange={(open) => !open && setDeleteChildId(null)}>

@@ -57,6 +57,9 @@ export default function StoriesArchivePage() {
 
   async function loadArchive() {
     setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data: family } = await supabase.from("families").select("id").eq("parent_user_id", user?.id).single();
+    
     const { data: childData } = await supabase
       .from("child_profiles")
       .select("id, name");
@@ -66,13 +69,14 @@ export default function StoriesArchivePage() {
     // assieme alle righe di story_assignments in un'unica chiamata ottimizzata.
     const { data: storyData } = await supabase
       .from("stories")
-      .select("*, story_assignments(*)")
+      .select("*, story_assignments(*), content_reports(id, status, reported_by_family_id)")
       .order("created_at", { ascending: false });
 
     if (storyData) {
       const mapped: UnifiedStory[] = storyData.map((st: any) => ({
         ...st,
         assignments: st.story_assignments || st.assignments || [],
+        has_pending_report: st.content_reports?.some((r: any) => r.status === "pending" && r.reported_by_family_id === family?.id),
       }));
       setStories(mapped);
     } else {
@@ -89,9 +93,17 @@ export default function StoriesArchivePage() {
               .from("story_assignments")
               .select("*")
               .eq("story_id", st.id);
+            const { data: reportData } = await supabase
+              .from("content_reports")
+              .select("id, status, reported_by_family_id")
+              .eq("story_id", st.id)
+              .eq("status", "pending")
+              .eq("reported_by_family_id", family?.id);
+              
             return {
               ...st,
               assignments: assData || [],
+              has_pending_report: reportData && reportData.length > 0,
             };
           })
         );
@@ -125,15 +137,16 @@ export default function StoriesArchivePage() {
         return;
       }
       if (data.signedUrl) {
-        window.open(data.signedUrl, "_blank", "noopener,noreferrer");
-        if (data.storagePath && !st.pdf_storage_path) {
-          setStories((prev) =>
-            prev.map((item) =>
-              item.id === st.id
-                ? { ...item, pdf_storage_path: data.storagePath }
-                : item
-            )
-          );
+        if (st.pdf_storage_path) {
+          window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+        } else {
+          if (data.storagePath) {
+            setStories((prev) =>
+              prev.map((item) =>
+                item.id === st.id ? { ...item, pdf_storage_path: data.storagePath } : item
+              )
+            );
+          }
         }
       }
     } catch (err: unknown) {
@@ -395,7 +408,7 @@ export default function StoriesArchivePage() {
       <ContentReportModal
         isOpen={!!storyToReport}
         onClose={() => setStoryToReport(null)}
-        storyId={storyToReport?.id || null}
+        storyId={storyToReport?.id || ""}
         storyTitle={
           storyToReport
             ? storyToReport.generated_text.split("\n")[0]?.replace(/^#\s*/, "") ||

@@ -17,6 +17,9 @@ function enrichCosmetic(c: any) {
     ...c,
     type: c.category === "BADGE" || c.type === "badge" ? "badge" : "frame",
     icon_value: c.icon_preset ?? c.icon_value ?? "",
+    unlock_requirement: c.unlock_requirement ?? "",
+    frame_color: c.frame_color ?? "",
+    frame_effect: c.frame_effect ?? "",
   };
 }
 
@@ -46,6 +49,13 @@ function normalizePayload(table: string, payload: any) {
     }
     if (!payload.requires_plan) {
       payload.requires_plan = "free";
+    }
+    if (payload.category === "BADGE") {
+      payload.frame_color = null;
+      payload.frame_effect = null;
+    } else {
+      payload.unlock_requirement = null;
+      if (payload.icon_preset === undefined) payload.icon_preset = "";
     }
   }
   delete payload.table;

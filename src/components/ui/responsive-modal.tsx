@@ -38,6 +38,7 @@ interface ResponsiveModalProps {
   title: string;
   description?: string;
   children: React.ReactNode;
+  footer?: React.ReactNode;
 }
 
 export function ResponsiveModal({
@@ -46,6 +47,7 @@ export function ResponsiveModal({
   title,
   description,
   children,
+  footer,
 }: ResponsiveModalProps) {
   const isDesktop = useMediaQuery("(min-width: 768px)");
 
@@ -58,6 +60,11 @@ export function ResponsiveModal({
             {description && <DialogDescription>{description}</DialogDescription>}
           </DialogHeader>
           {children}
+          {footer && (
+            <div className="mt-4 pt-4 flex gap-2 justify-end border-t border-slate-800">
+              {footer}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     );
@@ -65,12 +72,19 @@ export function ResponsiveModal({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="max-h-[90vh]">
-        <SheetHeader>
-          <SheetTitle>{title}</SheetTitle>
-          {description && <SheetDescription>{description}</SheetDescription>}
-        </SheetHeader>
-        <div className="mt-4">{children}</div>
+      <SheetContent side="bottom" className="max-h-[90vh] flex flex-col p-0 overflow-hidden">
+        <div className="p-6 pb-2 shrink-0">
+          <SheetHeader>
+            <SheetTitle>{title}</SheetTitle>
+            {description && <SheetDescription>{description}</SheetDescription>}
+          </SheetHeader>
+        </div>
+        <div className="p-6 pt-2 overflow-y-auto flex-1">{children}</div>
+        {footer && (
+          <div className="p-4 shrink-0 bg-slate-900 border-t border-slate-800 flex gap-2 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+            {footer}
+          </div>
+        )}
       </SheetContent>
     </Sheet>
   );

@@ -41,6 +41,21 @@ export async function GET() {
         .eq("id", family.parent_avatar_preset_id)
         .maybeSingle();
       preset = presetData;
+    } else {
+      const { data: defaultAvatars } = await supabase
+        .from("avatar_presets")
+        .select("*")
+        .in("target_audience", ["parent", "both"])
+        .order("display_order", { ascending: true })
+        .limit(1);
+
+      if (defaultAvatars && defaultAvatars.length > 0) {
+        preset = defaultAvatars[0];
+        await supabase
+          .from("families")
+          .update({ parent_avatar_preset_id: preset.id })
+          .eq("id", family.id);
+      }
     }
 
     let badge = null;
@@ -153,7 +168,7 @@ export async function PUT(req: Request) {
     }
 
     if (parent_avatar_preset_id !== undefined) {
-      updatePayload.parent_avatar_preset_id = parent_avatar_preset_id || null;
+      updatePayload.parent_avatar_preset_id = parent_avatar_preset_id;
     }
 
     if (parent_equipped_badge_id !== undefined) {

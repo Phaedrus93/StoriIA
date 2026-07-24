@@ -97,10 +97,40 @@ export default function ContentReportModal({
         if (!open) handleResetAndClose();
       }}
       title="Segnala Contenuto"
-      description={`Segnalazione per: ${storyTitle}`}
+      description="Aiutaci a mantenere StoriIA un ambiente sicuro e adatto."
+      footer={
+        !success ? (
+          <>
+            <button
+              type="button"
+              onClick={handleResetAndClose}
+              className="px-4 py-2 rounded-xl text-slate-400 hover:text-white text-xs font-semibold transition-colors"
+              disabled={submitting}
+            >
+              Annulla
+            </button>
+            <button
+              type="submit"
+              form="report-form"
+              disabled={submitting}
+              className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs shadow-lg shadow-amber-500/20 transition-all flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>{submitting ? "Invio in corso..." : "Invia Segnalazione"}</span>
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={handleResetAndClose}
+            className="w-full px-4 py-2 rounded-xl bg-slate-800 text-white font-semibold text-xs hover:bg-slate-700 transition-colors"
+          >
+            Chiudi
+          </button>
+        )
+      }
     >
       <div className="space-y-5">
-
         {success ? (
           <div className="text-center py-6 space-y-4">
             <div className="w-12 h-12 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center mx-auto text-emerald-400">
@@ -110,18 +140,9 @@ export default function ContentReportModal({
             <p className="text-xs text-slate-300 leading-relaxed">
               Grazie per la tua segnalazione per &ldquo;<strong>{storyTitle}</strong>&rdquo;. Il nostro team di moderazione verificherà il contenuto al più presto per mantenere l&apos;ambiente magico e sicuro per tutte le famiglie.
             </p>
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={handleResetAndClose}
-                className="btn-primary w-full py-2.5 text-xs font-semibold"
-              >
-                Chiudi Modale
-              </button>
-            </div>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form id="report-form" onSubmit={handleSubmit} className="space-y-4">
             <div className="flex items-center gap-3 text-amber-400">
               <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0">
                 <AlertTriangle className="w-5 h-5" />
@@ -189,25 +210,6 @@ export default function ContentReportModal({
                 <span>Aiutaci a capire meglio il contesto</span>
                 <span>{details.length}/500</span>
               </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-800/80">
-              <button
-                type="button"
-                onClick={handleResetAndClose}
-                disabled={submitting}
-                className="btn-secondary px-4 py-2 text-xs"
-              >
-                Annulla
-              </button>
-              <button
-                type="submit"
-                disabled={submitting}
-                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs shadow-lg shadow-amber-500/20 transition-all flex items-center gap-1.5 disabled:opacity-50"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span>{submitting ? "Invio in corso..." : "Invia Segnalazione"}</span>
-              </button>
             </div>
           </form>
         )}

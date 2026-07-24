@@ -265,7 +265,7 @@ export async function POST(req: Request) {
       category: "activity",
       title: "Nuova storia generata! ✨",
       message: `La storia "${newStory.title || characterName || "Avventura Magica"}" è pronta da leggere e ascoltare nella libreria.`,
-      actionLink: `/read?storyId=${newStory.id}`,
+      actionLink: `/stories`,
     });
 
     return NextResponse.json({

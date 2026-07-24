@@ -101,7 +101,7 @@ function BillingContent() {
       if (res.ok && data.success) {
         setGiftRedeemMsg({
           type: "success",
-          text: `Codice ${data.code} riscattato con successo! ${data.type === "credits" ? `+${data.amountOrTier} crediti aggiunti.` : `Abbonamento ${data.amountOrTier.toUpperCase()} attivato per 1 mese.`}`,
+          text: `Codice ${data.code} riscattato con successo! ${data.type === "credits" ? `+${data.amountOrTier} crediti aggiunti.` : `Abbonamento ${data.amountOrTier.toUpperCase()} attivato per ${data.durationMonths} mes${data.durationMonths === 1 ? "e" : "i"}.`}`,
         });
         setGiftCodeInput("");
         loadBillingStatus();
@@ -566,7 +566,6 @@ function BillingContent() {
                     <thead>
                       <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider">
                         <th className="py-3 px-4">Data</th>
-                        <th className="py-3 px-4">Tipo</th>
                         <th className="py-3 px-4">Descrizione</th>
                         <th className="py-3 px-4 text-right">Variazione</th>
                       </tr>
@@ -577,7 +576,6 @@ function BillingContent() {
                           <td className="py-3 px-4 whitespace-nowrap text-slate-400">
                             {new Date(entry.created_at).toLocaleString("it-IT")}
                           </td>
-                          <td className="py-3 px-4 font-mono text-indigo-300">{entry.transaction_type}</td>
                           <td className="py-3 px-4">{entry.description}</td>
                           <td className={`py-3 px-4 text-right font-bold font-mono ${
                             entry.amount > 0 ? "text-emerald-400" : "text-rose-400"

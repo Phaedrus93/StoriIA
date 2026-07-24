@@ -19,7 +19,7 @@ interface ChildProfile {
 
 export default function ChildSelectPage() {
   const [children, setChildren] = useState<ChildProfile[]>([]);
-  const [cosmeticsMap, setCosmeticsMap] = useState<Record<string, string>>({});
+  const [cosmeticsMap, setCosmeticsMap] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [selectingId, setSelectingId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -38,13 +38,13 @@ export default function ChildSelectPage() {
         .from("child_profiles")
         .select("id, name, birth_year, avatar_preset_id, active_badge_id, active_frame_id, is_suspended, created_at")
         .order("created_at", { ascending: true }),
-      supabase.from("cosmetic_items").select("id, icon_preset"),
+      supabase.from("cosmetic_items").select("*"),
     ]);
 
-    const map: Record<string, string> = {};
+    const map: Record<string, any> = {};
     if (cosmData) {
-      cosmData.forEach((c: { id: string; icon_preset: string }) => {
-        map[c.id] = c.icon_preset;
+      cosmData.forEach((c: any) => {
+        map[c.id] = c;
       });
     }
     setCosmeticsMap(map);

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { checkAdminPrivileges, createAdminClient } from "@/lib/admin";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const supabase = await createClient();
     const { isAdmin, error } = await checkAdminPrivileges(supabase);
@@ -12,17 +12,15 @@ export async function GET() {
     }
 
     const { data, error: dbErr } = await supabase
-      .from("avatar_presets")
+      .from("narrative_content_catalog")
       .select("*")
-      .order("display_order", { ascending: true });
+      .order("content_type", { ascending: true })
+      .order("created_at", { ascending: false });
 
-    if (dbErr) {
-      return NextResponse.json({ error: dbErr.message }, { status: 500 });
-    }
-
-    return NextResponse.json({ presets: data || [] });
+    if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 500 });
+    return NextResponse.json({ narrative_content: data || [] });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Errore recupero preset avatar";
+    const message = err instanceof Error ? err.message : "Errore recupero contenuti narrativi";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -40,16 +38,8 @@ export async function POST(req: Request) {
     const adminClient = createAdminClient();
 
     const { data, error: dbErr } = await adminClient
-      .from("avatar_presets")
-      .insert({
-        id: body.id || `avatar-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-        name: body.name,
-        image_url: body.image_url || body.imageUrl || "/avatars/explorer.svg",
-        gender: body.gender || "neutral",
-        target_audience: body.target_audience || "child",
-        is_active: body.is_active !== undefined ? body.is_active : true,
-        display_order: body.display_order ?? body.displayOrder ?? 0,
-      })
+      .from("narrative_content_catalog")
+      .insert(body)
       .select()
       .single();
 
@@ -57,9 +47,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: dbErr.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, preset: data });
+    return NextResponse.json({ success: true, item: data });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Errore creazione preset avatar";
+    const message = err instanceof Error ? err.message : "Errore creazione contenuto narrativo";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -75,28 +65,18 @@ export async function PUT(req: Request) {
 
     const body = await req.json();
     if (!body.id) {
-      return NextResponse.json({ error: "id richiesto" }, { status: 400 });
+      return NextResponse.json({ error: "Id mancante" }, { status: 400 });
     }
 
     const adminClient = createAdminClient();
-    const updates: Record<string, any> = {};
-    if (body.name !== undefined) updates.name = body.name;
-    if (body.image_url !== undefined || body.imageUrl !== undefined) {
-      updates.image_url = body.image_url || body.imageUrl;
-    }
-    if (body.gender !== undefined) updates.gender = body.gender;
-    if (body.target_audience !== undefined) updates.target_audience = body.target_audience;
-    if (body.is_active !== undefined || body.isActive !== undefined) {
-      updates.is_active = body.is_active ?? body.isActive;
-    }
-    if (body.display_order !== undefined || body.displayOrder !== undefined) {
-      updates.display_order = body.display_order ?? body.displayOrder;
-    }
+    const id = body.id;
+    const payload = { ...body };
+    delete payload.id;
 
     const { data, error: dbErr } = await adminClient
-      .from("avatar_presets")
-      .update(updates)
-      .eq("id", body.id)
+      .from("narrative_content_catalog")
+      .update(payload)
+      .eq("id", id)
       .select()
       .single();
 
@@ -104,9 +84,9 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: dbErr.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, preset: data });
+    return NextResponse.json({ success: true, item: data });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Errore aggiornamento preset avatar";
+    const message = err instanceof Error ? err.message : "Errore aggiornamento contenuto narrativo";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -124,12 +104,12 @@ export async function DELETE(req: Request) {
     const id = url.searchParams.get("id");
 
     if (!id) {
-      return NextResponse.json({ error: "id richiesto" }, { status: 400 });
+      return NextResponse.json({ error: "Id mancante" }, { status: 400 });
     }
 
     const adminClient = createAdminClient();
     const { error: dbErr } = await adminClient
-      .from("avatar_presets")
+      .from("narrative_content_catalog")
       .delete()
       .eq("id", id);
 
@@ -139,7 +119,7 @@ export async function DELETE(req: Request) {
 
     return NextResponse.json({ success: true });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Errore eliminazione preset avatar";
+    const message = err instanceof Error ? err.message : "Errore eliminazione contenuto narrativo";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

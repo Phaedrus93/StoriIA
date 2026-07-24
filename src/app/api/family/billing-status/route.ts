@@ -17,7 +17,7 @@ export async function GET() {
 
     let { data: family, error: famErr } = await supabase
       .from("families")
-      .select("id, subscription_tier, subscription_status, credits_balance, addon_children_count, pending_addon_children_count, stripe_subscription_id, parent_user_id, gift_subscription_expires_at, pre_gift_tier")
+      .select("id, subscription_tier, subscription_status, credits_balance, addon_children_count, pending_addon_children_count, stripe_subscription_id, parent_user_id, gift_subscription_expires_at, pre_gift_tier, stripe_current_period_end")
       .eq("parent_user_id", user.id)
       .single();
 
@@ -33,7 +33,7 @@ export async function GET() {
     if (expired) {
       const { data: updatedFam } = await supabase
         .from("families")
-        .select("id, subscription_tier, subscription_status, credits_balance, addon_children_count, pending_addon_children_count, stripe_subscription_id, parent_user_id, gift_subscription_expires_at, pre_gift_tier")
+        .select("id, subscription_tier, subscription_status, credits_balance, addon_children_count, pending_addon_children_count, stripe_subscription_id, parent_user_id, gift_subscription_expires_at, pre_gift_tier, stripe_current_period_end")
         .eq("id", family.id)
         .single();
       if (updatedFam) family = updatedFam;
@@ -56,6 +56,7 @@ export async function GET() {
       addonCount: family.addon_children_count || 0,
       pendingAddonCount: family.pending_addon_children_count ?? null,
       stripeSubscriptionId: family.stripe_subscription_id || null,
+      stripeCurrentPeriodEnd: family.stripe_current_period_end || null,
       giftSubscriptionExpiresAt: family.gift_subscription_expires_at || null,
       ledger: ledger || [],
       plans,
